@@ -2,7 +2,7 @@
 
 ---
 
-# 🪪 **ZKIC** — Zero-Knowledge Identity Chain
+# 🪪 **Veritas-Chain** — Zero-Knowledge Identity Chain
 
 > *A decentralized identity ledger with cryptographic verification, zero-knowledge selective disclosure, and autonomous P2P consensus.*
 
