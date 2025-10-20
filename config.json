@@ -1,0 +1,80 @@
+{
+  "network": {
+    "httpPort": 8080,
+    "p2pPort": 6000,
+    "discoveryDNS": "zkic.example.org",
+    "ipDiscovery": true
+  },
+  "security": {
+    "hashAlgorithm": "sha512",
+    "symmetricEncryption": "aes-256-gcm",
+    "asymmetricEncryption": "ed25519",
+    "tokenLength": 32
+  },
+  "identity": {
+    "lifecycle": {
+      "guardianAge": 5,
+      "selfAge": 18,
+      "deceasedGraceYears": 3
+    },
+    "maxKeyRotations": 5
+  },
+  "consensus": {
+    "mode": "APoC",
+    "genesisKeyRegistry": [
+      "<pubkey_hospital_1>",
+      "<pubkey_hospital_2>",
+      "<pubkey_gov_1>"
+    ],
+    "requiredSignatures": {
+      "registration": 2,
+      "update": 3
+    }
+  },
+  "blockTemplate": {
+    "data": {
+      "name": "",
+      "dob": "",
+      "address": "",
+      "bloodGroup": "",
+      "fatherName": "",
+      "motherName": ""
+    },
+    "tokens": {
+      "<tokenId>": {
+        "permissions": [string],
+        "remainingUses": number,
+        "issuedAt": timestamp,
+        "signature": string
+      }
+    },
+    "metadata": {
+      "createdAt": 0,
+      "updatedAt": 0,
+      "ownerPubKey": "",
+      "lifecycleStage": "genesis",
+      "deathDate": null,
+      "rotationsLeft": 5
+    }
+  },
+  "genesisTemplate": {
+    "chainId": "",
+    "createdAt": 0,
+    "masterPubKey": "",
+    "authorizedGenesisKeys": [],
+    "signingPolicy": {
+      "registration": 2,
+      "update": 3
+    },
+    "networkMetadata": {
+      "encryption": "aes-256-gcm",
+      "hashing": "sha512",
+      "asymmetric": "ed25519"
+    },
+    "chainSignature": ""
+  },
+  "storage": {
+    "snapshotIntervalSeconds": 300,
+    "path": "./zkic_chain_data"
+  }
+}
