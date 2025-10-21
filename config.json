@@ -61,8 +61,8 @@
     "snapshotIntervalSeconds": 300,
     "path": "./zkic_chain_data"
   },
-  "performance": {
-    "bufferChunkSize": 16,
-    "bufferPaddingRange": [8, 16]
+  "protocol": {
+    "internalSegmentSize": 16,
+    "internalOffsetBounds": [8, 16]
   }
 }

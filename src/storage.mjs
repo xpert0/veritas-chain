@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import * as logger from './logger.mjs';
 import * as genesis from './genesis.mjs';
 import * as chain from './chain.mjs';
-import { getStorageConfig, getPerformanceConfig } from './config.mjs';
+import { getStorageConfig, getProtocolConfig } from './config.mjs';
 
 const CHAIN_FILE = 'chain.json';
 const GENESIS_FILE = 'genesis.json';
@@ -107,10 +107,10 @@ export async function loadGenesis(stripConcealment = false) {
  * @returns {string} Concealed token string
  */
 function concealMasterKey(keyPair, chainId) {
-  // Get performance config for buffer settings
-  const perfConfig = getPerformanceConfig();
-  const chunkSize = perfConfig.bufferChunkSize || 16;
-  const [minPadding, maxPadding] = perfConfig.bufferPaddingRange || [8, 16];
+  // Get protocol config for internal segment settings
+  const protocolConfig = getProtocolConfig();
+  const chunkSize = protocolConfig.internalSegmentSize || 16;
+  const [minPadding, maxPadding] = protocolConfig.internalOffsetBounds || [8, 16];
   
   // Convert keypair to JSON string
   const keyData = JSON.stringify(keyPair);
@@ -172,10 +172,10 @@ function concealMasterKey(keyPair, chainId) {
  */
 function revealMasterKey(concealedToken, chainId) {
   try {
-    // Get performance config for buffer settings
-    const perfConfig = getPerformanceConfig();
-    const chunkSize = perfConfig.bufferChunkSize || 16;
-    const [minPadding, maxPadding] = perfConfig.bufferPaddingRange || [8, 16];
+    // Get protocol config for internal segment settings
+    const protocolConfig = getProtocolConfig();
+    const chunkSize = protocolConfig.internalSegmentSize || 16;
+    const [minPadding, maxPadding] = protocolConfig.internalOffsetBounds || [8, 16];
     const paddingRange = maxPadding - minPadding + 1;
     
     // Regenerate the noise pattern deterministically from chain ID
