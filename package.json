@@ -1,0 +1,23 @@
+{
+  "name": "veritas-chain",
+  "version": "1.0.0",
+  "description": "Zero-Knowledge Identity Chain - A decentralized identity ledger",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test"
+  },
+  "keywords": [
+    "blockchain",
+    "zero-knowledge",
+    "identity",
+    "p2p",
+    "decentralized"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
