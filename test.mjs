@@ -106,14 +106,14 @@ async function runTests() {
     
     const tokenResult = await request('POST', '/token', tokenData);
     console.log('✓ Token issued successfully');
-    console.log('  Token ID:', tokenResult.token.id);
-    console.log('  Token ID Length:', tokenResult.token.id.length);
+    console.log('  Token ID:', tokenResult.tokenId);
+    console.log('  Token ID Length:', tokenResult.tokenId.length);
     console.log('  Permissions:', tokenResult.token.permissions.join(', '));
     console.log('  Remaining Uses:', tokenResult.token.remainingUses);
     console.log('  New Block Hash:', tokenResult.blockHash);
     
     // Validate that token ID looks like nanoid (alphanumeric, URL-safe)
-    const isValidNanoid = /^[A-Za-z0-9_-]+$/.test(tokenResult.token.id);
+    const isValidNanoid = /^[A-Za-z0-9_-]+$/.test(tokenResult.tokenId);
     if (isValidNanoid) {
       console.log('  ✓ Token ID format is valid (nanoid)');
     } else {
@@ -123,13 +123,13 @@ async function runTests() {
     testsPassed++;
     console.log();
     
-    const { token, blockHash: tokenBlockHash } = tokenResult;
+    const { tokenId, token, blockHash: tokenBlockHash } = tokenResult;
     
     // Test 4: Zero-knowledge verification (age check)
     console.log('Test 4: Zero-knowledge verification (checking if born before 2007-10-20)...');
     const verifyData = {
       blockHash: tokenBlockHash,
-      tokenId: token.id,
+      tokenId: tokenId,
       field: 'dob',
       condition: '<= 2007-10-20',
       encryptionKey
@@ -153,7 +153,7 @@ async function runTests() {
     console.log('Test 5: Zero-knowledge verification (checking if bloodGroup == O+)...');
     const verify2Data = {
       blockHash: tokenBlockHash,
-      tokenId: token.id,
+      tokenId: tokenId,
       field: 'bloodGroup',
       condition: '== O+',
       encryptionKey
@@ -196,7 +196,7 @@ async function runTests() {
     console.log('Test 7: Verifying token usage count decreased...');
     const verify3Data = {
       blockHash: updateResult.blockHash,
-      tokenId: token.id,
+      tokenId: tokenId,
       field: 'name',
       condition: '== John Doe',
       encryptionKey

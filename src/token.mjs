@@ -8,23 +8,24 @@ import { getSecurityConfig } from './config.mjs';
  * @param {string} ownerPrivateKey - Private key of block owner
  * @param {string[]} permissions - Fields this token can access
  * @param {number} maxUses - Maximum number of uses
- * @returns {Promise<Object>} Token object
+ * @returns {Promise<Object>} Token object with id and token data
  */
 export async function issueToken(ownerPrivateKey, permissions, maxUses = 1) {
   const config = getSecurityConfig();
   const tokenId = crypto.generateTokenId(config.tokenLength);
   
+  // Token data without redundant id field (id is the parent key in tokens object)
   const token = {
-    id: tokenId,
     permissions,
     remainingUses: maxUses,
     issuedAt: getCurrentTimestamp()
   };
   
   // Sign token with owner's private key
+  // Include tokenId in signature but not in token object (it's stored as parent key)
   // Note: remainingUses is NOT included in signature as it's a mutable counter
   const tokenData = JSON.stringify({
-    id: token.id,
+    id: tokenId,
     permissions: token.permissions,
     issuedAt: token.issuedAt
   });
@@ -32,23 +33,27 @@ export async function issueToken(ownerPrivateKey, permissions, maxUses = 1) {
   token.signature = crypto.signEd25519(tokenData, ownerPrivateKey);
   
   logger.debug('Token issued', { tokenId, permissions, maxUses });
-  return token;
+  
+  // Return both tokenId and token data for storage as tokens[tokenId] = token
+  return { id: tokenId, token };
 }
 
 /**
  * Verify token signature
- * @param {Object} token - Token object
+ * @param {string} tokenId - Token ID (parent key in tokens object)
+ * @param {Object} token - Token object (without id field)
  * @param {string} ownerPublicKey - Public key of block owner
  * @returns {boolean} True if signature is valid
  */
-export function verifyToken(token, ownerPublicKey) {
+export function verifyToken(tokenId, token, ownerPublicKey) {
   if (!token || !token.signature) {
     return false;
   }
   
   // Note: remainingUses is NOT included in signature as it's a mutable counter
+  // tokenId is included in signature but stored as parent key, not in token object
   const tokenData = JSON.stringify({
-    id: token.id,
+    id: tokenId,
     permissions: token.permissions,
     issuedAt: token.issuedAt
   });
@@ -92,17 +97,18 @@ export function decrementTokenUse(token) {
 
 /**
  * Validate token for use
- * @param {Object} token - Token object
+ * @param {string} tokenId - Token ID (parent key in tokens object)
+ * @param {Object} token - Token object (without id field)
  * @param {string} ownerPublicKey - Public key of block owner
  * @param {string} field - Field to access
  * @returns {{valid: boolean, reason?: string}}
  */
-export function validateTokenForUse(token, ownerPublicKey, field) {
+export function validateTokenForUse(tokenId, token, ownerPublicKey, field) {
   if (!token) {
     return { valid: false, reason: 'Token not provided' };
   }
   
-  if (!verifyToken(token, ownerPublicKey)) {
+  if (!verifyToken(tokenId, token, ownerPublicKey)) {
     return { valid: false, reason: 'Invalid token signature' };
   }
   
@@ -130,11 +136,12 @@ export function getTokenById(tokens, tokenId) {
 /**
  * Add token to tokens object
  * @param {Object} tokens - Tokens object
- * @param {Object} token - Token to add
+ * @param {string} tokenId - Token ID (becomes parent key)
+ * @param {Object} token - Token data (without id field)
  * @returns {Object} Updated tokens object
  */
-export function addToken(tokens, token) {
-  tokens[token.id] = token;
+export function addToken(tokens, tokenId, token) {
+  tokens[tokenId] = token;
   return tokens;
 }
 

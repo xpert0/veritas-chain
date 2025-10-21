@@ -17,8 +17,8 @@ export function verifyCondition(block, tokenId, field, condition, encryptionKey)
     // Get token from block
     const token = tokenModule.getTokenById(block.tokens, tokenId);
     
-    // Validate token
-    const validation = tokenModule.validateTokenForUse(token, block.metadata.ownerPubKey, field);
+    // Validate token (pass tokenId separately since it's not in token object)
+    const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
     if (!validation.valid) {
       return { result: false, error: validation.reason };
     }
@@ -70,7 +70,7 @@ export function verifyMultipleConditions(block, tokenId, conditions, encryptionK
     
     for (const { field, condition } of conditions) {
       // Validate token has permission for each field
-      const validation = tokenModule.validateTokenForUse(token, block.metadata.ownerPubKey, field);
+      const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
       if (!validation.valid) {
         return { result: false, error: validation.reason };
       }
@@ -118,7 +118,7 @@ export function verifyFieldExists(block, tokenId, field) {
   try {
     const token = tokenModule.getTokenById(block.tokens, tokenId);
     
-    const validation = tokenModule.validateTokenForUse(token, block.metadata.ownerPubKey, field);
+    const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
     if (!validation.valid) {
       return { exists: false, error: validation.reason };
     }
@@ -151,7 +151,7 @@ export function verifyRange(block, tokenId, field, min, max, encryptionKey) {
   try {
     const token = tokenModule.getTokenById(block.tokens, tokenId);
     
-    const validation = tokenModule.validateTokenForUse(token, block.metadata.ownerPubKey, field);
+    const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
     if (!validation.valid) {
       return { result: false, error: validation.reason };
     }
@@ -192,7 +192,7 @@ export function verifyMembership(block, tokenId, field, allowedValues, encryptio
   try {
     const token = tokenModule.getTokenById(block.tokens, tokenId);
     
-    const validation = tokenModule.validateTokenForUse(token, block.metadata.ownerPubKey, field);
+    const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
     if (!validation.valid) {
       return { result: false, error: validation.reason };
     }

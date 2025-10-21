@@ -16,6 +16,8 @@ let snapshotInterval = null;
 const CONCEALMENT_KEY = 'networkHandshakeToken';
 const DERIVATION_SALT = 'zkic-chain-auth-v1';
 const ENCODING_ROUNDS = 10000;
+// Injection pattern - insert random bytes at these positions (every N chars)
+const INJECTION_INTERVAL = 16; // Inject random chars every 16 hex chars (8 bytes)
 
 /**
  * Initialize storage
@@ -101,6 +103,7 @@ export async function loadGenesis(stripConcealment = false) {
 
 /**
  * Conceal master key by encoding it to look like random handshake data
+ * Injects random characters at intervals so each peer sees different values
  * @param {Object} keyPair - Master key pair
  * @param {string} chainId - Chain ID for additional entropy
  * @returns {string} Concealed token string
@@ -130,20 +133,132 @@ function concealMasterKey(keyPair, chainId) {
   const authTag = cipher.getAuthTag();
   
   // Combine IV + encrypted data + auth tag into a single hex string
-  // This looks like a random handshake token
-  const concealed = iv.toString('hex') + encrypted + authTag.toString('hex');
+  const baseConcealed = iv.toString('hex') + encrypted + authTag.toString('hex');
+  
+  // Inject random characters at intervals to make it look different on each peer
+  // Use chain ID to derive deterministic noise pattern so revelation can extract correctly
+  const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
+  
+  let concealed = '';
+  let chunkNum = 0;
+  for (let i = 0; i < baseConcealed.length; i += INJECTION_INTERVAL) {
+    const chunk = baseConcealed.substring(i, i + INJECTION_INTERVAL);
+    concealed += chunk;
+    
+    // Add random padding between chunks (except at the end)
+    if (i + INJECTION_INTERVAL < baseConcealed.length) {
+      // Generate noise length deterministically from chain seed for this chunk
+      const noiseLength = 8 + (chainSeed[chunkNum % chainSeed.length] % 9); // 8-16 chars
+      // But generate truly random noise content (different per peer)
+      const noise = crypto.randomBytes(Math.ceil(noiseLength / 2)).toString('hex').substring(0, noiseLength);
+      concealed += noise;
+      chunkNum++;
+    }
+  }
   
   return concealed;
 }
 
 /**
  * Reveal master key from concealed token
- * @param {string} concealedToken - Concealed token string
+ * Extracts actual data by skipping random noise at intervals
+ * @param {string} concealedToken - Concealed token string with injected noise
  * @param {string} chainId - Chain ID for decryption
  * @returns {Object} Master key pair
  */
 function revealMasterKey(concealedToken, chainId) {
   try {
+    // Extract actual data by reading chunks at INJECTION_INTERVAL positions
+    // Skip the random noise between chunks
+    let baseConcealed = '';
+    let position = 0;
+    
+    while (position < concealedToken.length) {
+      // Read INJECTION_INTERVAL chars of actual data
+      const chunk = concealedToken.substring(position, position + INJECTION_INTERVAL);
+      baseConcealed += chunk;
+      position += INJECTION_INTERVAL;
+      
+      // Skip the noise section (find next valid chunk start)
+      // The noise section is variable length (8-16 chars), so we need to detect
+      // the pattern. We'll try to extract what we need first, then validate.
+      // For now, we estimate by looking for next chunk position
+      
+      // Actually, we can try a different approach: extract every INJECTION_INTERVAL
+      // chars, skipping any noise. But we don't know noise length in advance.
+      // Better: extract based on expected total length.
+      
+      // Let's calculate: IV(32) + encrypted(variable) + tag(32) = baseLength
+      // We need to extract chunks intelligently.
+    }
+    
+    // Alternative simpler approach: extract chunks of INJECTION_INTERVAL
+    // and try decryption, iterating until we find valid data
+    baseConcealed = '';
+    for (let i = 0; i < concealedToken.length; i++) {
+      const chunkIndex = Math.floor(baseConcealed.length / INJECTION_INTERVAL);
+      const positionInChunk = baseConcealed.length % INJECTION_INTERVAL;
+      
+      // Calculate where this chunk should start in the concealed token
+      // Chunk 0: position 0-15
+      // Chunk 1: position 16 + noise1_length
+      // Chunk 2: position 16 + noise1_length + 16 + noise2_length
+      // This is complex without knowing noise lengths...
+      
+      // Better approach: Since we know the structure, extract systematically
+      // Read INJECTION_INTERVAL, skip until next INJECTION_INTERVAL boundary
+      if (positionInChunk < INJECTION_INTERVAL) {
+        const srcPos = chunkIndex * (INJECTION_INTERVAL + 12) + positionInChunk; // avg noise ~12
+        if (srcPos < concealedToken.length) {
+          baseConcealed += concealedToken[srcPos];
+        }
+      }
+    }
+    
+    // Actually, let's use a marker-based approach
+    // The actual fix: we need to extract actual chunks systematically
+    // Since noise length varies, we'll use a different strategy
+    
+    // Simplest fix: Extract every Nth chunk of INJECTION_INTERVAL size
+    baseConcealed = '';
+    let pos = 0;
+    while (pos < concealedToken.length) {
+      const chunk = concealedToken.substring(pos, pos + INJECTION_INTERVAL);
+      baseConcealed += chunk;
+      
+      // Find start of next chunk by skipping to next multiple of INJECTION_INTERVAL
+      // after adding average noise (but this won't work with variable noise...)
+      
+      // Better: mark chunk boundaries explicitly in concealment
+      break; // abort this approach
+    }
+    
+    // Final approach: Use a delimiter or length prefix
+    // Since the comment says "only the chain knows which parts to discard",
+    // we'll use a deterministic pattern based on chain ID
+    
+    // Regenerate the noise pattern deterministically from chain ID
+    const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
+    baseConcealed = '';
+    let readPos = 0;
+    let chunkNum = 0;
+    
+    while (readPos < concealedToken.length) {
+      // Read INJECTION_INTERVAL chars of real data
+      const chunk = concealedToken.substring(readPos, readPos + INJECTION_INTERVAL);
+      if (chunk.length === 0) break;
+      baseConcealed += chunk;
+      readPos += INJECTION_INTERVAL;
+      
+      // Calculate noise length for this chunk using chain seed
+      const noiseLength = 8 + (chainSeed[chunkNum % chainSeed.length] % 9);
+      readPos += noiseLength; // Skip the noise
+      chunkNum++;
+      
+      // Safety check to prevent infinite loops
+      if (chunkNum > 1000) break;
+    }
+    
     // Derive decryption key from chain ID
     const derivedKey = crypto.pbkdf2Sync(
       chainId,
@@ -154,13 +269,13 @@ function revealMasterKey(concealedToken, chainId) {
     );
     
     // Extract IV (first 32 hex chars = 16 bytes)
-    const iv = Buffer.from(concealedToken.substring(0, 32), 'hex');
+    const iv = Buffer.from(baseConcealed.substring(0, 32), 'hex');
     
     // Extract auth tag (last 32 hex chars = 16 bytes)
-    const authTag = Buffer.from(concealedToken.substring(concealedToken.length - 32), 'hex');
+    const authTag = Buffer.from(baseConcealed.substring(baseConcealed.length - 32), 'hex');
     
     // Extract encrypted data (middle part)
-    const encrypted = concealedToken.substring(32, concealedToken.length - 32);
+    const encrypted = baseConcealed.substring(32, baseConcealed.length - 32);
     
     // Decrypt using AES-256-GCM
     const decipher = crypto.createDecipheriv('aes-256-gcm', derivedKey, iv);
@@ -172,7 +287,7 @@ function revealMasterKey(concealedToken, chainId) {
     // Parse and return keypair
     return JSON.parse(decrypted);
   } catch (error) {
-    throw new Error('Failed to reveal master key - data may be corrupted');
+    throw new Error('Failed to reveal master key - data may be corrupted: ' + error.message);
   }
 }
 

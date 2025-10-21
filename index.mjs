@@ -322,15 +322,15 @@ async function handleIssueToken(req, res) {
     return;
   }
   
-  // Issue token
-  const newToken = await token.issueToken(
+  // Issue token (returns {id, token})
+  const { id: tokenId, token: tokenData } = await token.issueToken(
     body.ownerPrivateKey,
     body.permissions,
     body.maxUses
   );
   
-  // Add token to block
-  token.addToken(targetBlock.tokens, newToken);
+  // Add token to block (tokenId as parent key, tokenData without id)
+  token.addToken(targetBlock.tokens, tokenId, tokenData);
   
   // Recalculate block hash
   targetBlock.hash = block.calculateBlockHash(targetBlock);
@@ -353,13 +353,14 @@ async function handleIssueToken(req, res) {
   logger.info('Token issued', { 
     oldBlockHash: body.blockHash,
     newBlockHash: targetBlock.hash,
-    tokenId: newToken.id
+    tokenId: tokenId
   });
   
   sendJSON(res, 201, { 
     success: true,
     blockHash: targetBlock.hash,
-    token: newToken
+    tokenId: tokenId,
+    token: tokenData
   });
 }
 
