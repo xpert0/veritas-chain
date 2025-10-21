@@ -61,10 +61,10 @@ function validateConfig(cfg) {
   if (!allowedAlgorithms.includes(cfg.security.hashAlgorithm)) {
     throw new Error('Invalid hash algorithm');
   }
-  if (!allowedAlgorithms.includes(cfg.security.asymmetricEncryption)) {
+  if (!allowedAlgorithms.includes(cfg.security.asymmetric)) {
     throw new Error('Invalid asymmetric encryption');
   }
-  if (!allowedAlgorithms.includes(cfg.security.symmetricEncryption)) {
+  if (!allowedAlgorithms.includes(cfg.security.encryption)) {
     throw new Error('Invalid symmetric encryption');
   }
   
