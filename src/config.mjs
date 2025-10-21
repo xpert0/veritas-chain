@@ -148,6 +148,14 @@ export function getGenesisTemplate() {
   return getConfig().genesisTemplate;
 }
 
+/**
+ * Get performance configuration
+ * @returns {Object} Performance config
+ */
+export function getPerformanceConfig() {
+  return getConfig().performance;
+}
+
 export default {
   loadConfig,
   getConfig,
@@ -157,5 +165,6 @@ export default {
   getConsensusConfig,
   getStorageConfig,
   getBlockTemplate,
-  getGenesisTemplate
+  getGenesisTemplate,
+  getPerformanceConfig
 };

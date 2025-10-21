@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import * as logger from './logger.mjs';
 import * as genesis from './genesis.mjs';
 import * as chain from './chain.mjs';
-import { getStorageConfig } from './config.mjs';
+import { getStorageConfig, getPerformanceConfig } from './config.mjs';
 
 const CHAIN_FILE = 'chain.json';
 const GENESIS_FILE = 'genesis.json';
@@ -16,8 +16,6 @@ let snapshotInterval = null;
 const CONCEALMENT_KEY = 'networkHandshakeToken';
 const DERIVATION_SALT = 'zkic-chain-auth-v1';
 const ENCODING_ROUNDS = 10000;
-// Injection pattern - insert random bytes at these positions (every N chars)
-const INJECTION_INTERVAL = 16; // Inject random chars every 16 hex chars (8 bytes)
 
 /**
  * Initialize storage
@@ -109,6 +107,11 @@ export async function loadGenesis(stripConcealment = false) {
  * @returns {string} Concealed token string
  */
 function concealMasterKey(keyPair, chainId) {
+  // Get performance config for buffer settings
+  const perfConfig = getPerformanceConfig();
+  const chunkSize = perfConfig.bufferChunkSize || 16;
+  const [minPadding, maxPadding] = perfConfig.bufferPaddingRange || [8, 16];
+  
   // Convert keypair to JSON string
   const keyData = JSON.stringify(keyPair);
   
@@ -138,17 +141,18 @@ function concealMasterKey(keyPair, chainId) {
   // Inject random characters at intervals to make it look different on each peer
   // Use chain ID to derive deterministic noise pattern so revelation can extract correctly
   const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
+  const paddingRange = maxPadding - minPadding + 1;
   
   let concealed = '';
   let chunkNum = 0;
-  for (let i = 0; i < baseConcealed.length; i += INJECTION_INTERVAL) {
-    const chunk = baseConcealed.substring(i, i + INJECTION_INTERVAL);
+  for (let i = 0; i < baseConcealed.length; i += chunkSize) {
+    const chunk = baseConcealed.substring(i, i + chunkSize);
     concealed += chunk;
     
     // Add random padding between chunks (except at the end)
-    if (i + INJECTION_INTERVAL < baseConcealed.length) {
+    if (i + chunkSize < baseConcealed.length) {
       // Generate noise length deterministically from chain seed for this chunk
-      const noiseLength = 8 + (chainSeed[chunkNum % chainSeed.length] % 9); // 8-16 chars
+      const noiseLength = minPadding + (chainSeed[chunkNum % chainSeed.length] % paddingRange);
       // But generate truly random noise content (different per peer)
       const noise = crypto.randomBytes(Math.ceil(noiseLength / 2)).toString('hex').substring(0, noiseLength);
       concealed += noise;
@@ -168,90 +172,27 @@ function concealMasterKey(keyPair, chainId) {
  */
 function revealMasterKey(concealedToken, chainId) {
   try {
-    // Extract actual data by reading chunks at INJECTION_INTERVAL positions
-    // Skip the random noise between chunks
-    let baseConcealed = '';
-    let position = 0;
-    
-    while (position < concealedToken.length) {
-      // Read INJECTION_INTERVAL chars of actual data
-      const chunk = concealedToken.substring(position, position + INJECTION_INTERVAL);
-      baseConcealed += chunk;
-      position += INJECTION_INTERVAL;
-      
-      // Skip the noise section (find next valid chunk start)
-      // The noise section is variable length (8-16 chars), so we need to detect
-      // the pattern. We'll try to extract what we need first, then validate.
-      // For now, we estimate by looking for next chunk position
-      
-      // Actually, we can try a different approach: extract every INJECTION_INTERVAL
-      // chars, skipping any noise. But we don't know noise length in advance.
-      // Better: extract based on expected total length.
-      
-      // Let's calculate: IV(32) + encrypted(variable) + tag(32) = baseLength
-      // We need to extract chunks intelligently.
-    }
-    
-    // Alternative simpler approach: extract chunks of INJECTION_INTERVAL
-    // and try decryption, iterating until we find valid data
-    baseConcealed = '';
-    for (let i = 0; i < concealedToken.length; i++) {
-      const chunkIndex = Math.floor(baseConcealed.length / INJECTION_INTERVAL);
-      const positionInChunk = baseConcealed.length % INJECTION_INTERVAL;
-      
-      // Calculate where this chunk should start in the concealed token
-      // Chunk 0: position 0-15
-      // Chunk 1: position 16 + noise1_length
-      // Chunk 2: position 16 + noise1_length + 16 + noise2_length
-      // This is complex without knowing noise lengths...
-      
-      // Better approach: Since we know the structure, extract systematically
-      // Read INJECTION_INTERVAL, skip until next INJECTION_INTERVAL boundary
-      if (positionInChunk < INJECTION_INTERVAL) {
-        const srcPos = chunkIndex * (INJECTION_INTERVAL + 12) + positionInChunk; // avg noise ~12
-        if (srcPos < concealedToken.length) {
-          baseConcealed += concealedToken[srcPos];
-        }
-      }
-    }
-    
-    // Actually, let's use a marker-based approach
-    // The actual fix: we need to extract actual chunks systematically
-    // Since noise length varies, we'll use a different strategy
-    
-    // Simplest fix: Extract every Nth chunk of INJECTION_INTERVAL size
-    baseConcealed = '';
-    let pos = 0;
-    while (pos < concealedToken.length) {
-      const chunk = concealedToken.substring(pos, pos + INJECTION_INTERVAL);
-      baseConcealed += chunk;
-      
-      // Find start of next chunk by skipping to next multiple of INJECTION_INTERVAL
-      // after adding average noise (but this won't work with variable noise...)
-      
-      // Better: mark chunk boundaries explicitly in concealment
-      break; // abort this approach
-    }
-    
-    // Final approach: Use a delimiter or length prefix
-    // Since the comment says "only the chain knows which parts to discard",
-    // we'll use a deterministic pattern based on chain ID
+    // Get performance config for buffer settings
+    const perfConfig = getPerformanceConfig();
+    const chunkSize = perfConfig.bufferChunkSize || 16;
+    const [minPadding, maxPadding] = perfConfig.bufferPaddingRange || [8, 16];
+    const paddingRange = maxPadding - minPadding + 1;
     
     // Regenerate the noise pattern deterministically from chain ID
     const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
-    baseConcealed = '';
+    let baseConcealed = '';
     let readPos = 0;
     let chunkNum = 0;
     
     while (readPos < concealedToken.length) {
-      // Read INJECTION_INTERVAL chars of real data
-      const chunk = concealedToken.substring(readPos, readPos + INJECTION_INTERVAL);
+      // Read chunkSize chars of real data
+      const chunk = concealedToken.substring(readPos, readPos + chunkSize);
       if (chunk.length === 0) break;
       baseConcealed += chunk;
-      readPos += INJECTION_INTERVAL;
+      readPos += chunkSize;
       
       // Calculate noise length for this chunk using chain seed
-      const noiseLength = 8 + (chainSeed[chunkNum % chainSeed.length] % 9);
+      const noiseLength = minPadding + (chainSeed[chunkNum % chainSeed.length] % paddingRange);
       readPos += noiseLength; // Skip the noise
       chunkNum++;
       
