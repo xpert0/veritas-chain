@@ -6,7 +6,7 @@
   "main": "index.mjs",
   "scripts": {
     "start": "node index.mjs",
-    "test": "node --test"
+    "test": "node test.mjs"
   },
   "keywords": [
     "blockchain",
@@ -19,5 +19,8 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "nanoid": "^5.0.0"
   }
 }

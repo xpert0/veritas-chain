@@ -188,7 +188,7 @@ export function getAllPeers() {
  * @param {number} staleThresholdSeconds - Seconds after which peer is considered stale
  * @returns {number} Number of removed peers
  */
-export function removeStale Peers(staleThresholdSeconds = 300) {
+export function removeStalePeers(staleThresholdSeconds = 300) {
   const now = getCurrentTimestamp();
   let removedCount = 0;
   

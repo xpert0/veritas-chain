@@ -40,14 +40,7 @@
       "fatherName": "",
       "motherName": ""
     },
-    "tokens": [
-      "<token>": {
-        "permissions": [string],
-        "remainingUses": number,
-        "issuedAt": timestamp,
-        "signature": string
-      }
-    ],
+    "tokens": {},
     "metadata": {
       "createdAt": 0,
       "updatedAt": 0,

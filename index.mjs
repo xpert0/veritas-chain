@@ -309,6 +309,18 @@ async function handleIssueToken(req, res) {
   // Add token to block
   token.addToken(targetBlock.tokens, newToken);
   
+  // Recalculate block hash
+  targetBlock.hash = block.calculateBlockHash(targetBlock);
+  
+  // Re-sign the block
+  const blockData = JSON.stringify({
+    hash: targetBlock.hash,
+    encryptedData: targetBlock.encryptedData,
+    metadata: targetBlock.metadata,
+    prevHash: targetBlock.prevHash
+  });
+  targetBlock.signature = crypto.signEd25519(blockData, body.ownerPrivateKey);
+  
   // Update chain
   chain.updateBlockInChain(body.blockHash, targetBlock);
   
@@ -316,12 +328,14 @@ async function handleIssueToken(req, res) {
   await storage.saveSnapshot();
   
   logger.info('Token issued', { 
-    blockHash: body.blockHash,
+    oldBlockHash: body.blockHash,
+    newBlockHash: targetBlock.hash,
     tokenId: newToken.id
   });
   
   sendJSON(res, 201, { 
     success: true,
+    blockHash: targetBlock.hash,
     token: newToken
   });
 }

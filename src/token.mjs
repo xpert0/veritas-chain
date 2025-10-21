@@ -12,7 +12,7 @@ import { getSecurityConfig } from './config.mjs';
  */
 export async function issueToken(ownerPrivateKey, permissions, maxUses = 1) {
   const config = getSecurityConfig();
-  const tokenId = await crypto.generateTokenId(config.tokenLength);
+  const tokenId = crypto.generateTokenId(config.tokenLength);
   
   const token = {
     id: tokenId,
@@ -22,10 +22,10 @@ export async function issueToken(ownerPrivateKey, permissions, maxUses = 1) {
   };
   
   // Sign token with owner's private key
+  // Note: remainingUses is NOT included in signature as it's a mutable counter
   const tokenData = JSON.stringify({
     id: token.id,
     permissions: token.permissions,
-    remainingUses: token.remainingUses,
     issuedAt: token.issuedAt
   });
   
@@ -46,10 +46,10 @@ export function verifyToken(token, ownerPublicKey) {
     return false;
   }
   
+  // Note: remainingUses is NOT included in signature as it's a mutable counter
   const tokenData = JSON.stringify({
     id: token.id,
     permissions: token.permissions,
-    remainingUses: token.remainingUses,
     issuedAt: token.issuedAt
   });
   

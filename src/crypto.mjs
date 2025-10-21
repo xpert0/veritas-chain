@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { promisify } from 'util';
+import { nanoid } from 'nanoid';
 
 const generateKeyPair = promisify(crypto.generateKeyPair);
 const randomBytes = promisify(crypto.randomBytes);
@@ -32,10 +33,8 @@ export async function generateEd25519KeyPair() {
  * @returns {string} Base64 encoded signature
  */
 export function signEd25519(data, privateKey) {
-  const sign = crypto.createSign('SHA512');
-  sign.update(data);
-  sign.end();
-  return sign.sign(privateKey, 'base64');
+  const signature = crypto.sign(null, Buffer.from(data), privateKey);
+  return signature.toString('base64');
 }
 
 /**
@@ -47,10 +46,12 @@ export function signEd25519(data, privateKey) {
  */
 export function verifyEd25519(data, signature, publicKey) {
   try {
-    const verify = crypto.createVerify('SHA512');
-    verify.update(data);
-    verify.end();
-    return verify.verify(publicKey, signature, 'base64');
+    return crypto.verify(
+      null,
+      Buffer.from(data),
+      publicKey,
+      Buffer.from(signature, 'base64')
+    );
   } catch (error) {
     return false;
   }
@@ -164,11 +165,10 @@ export function decryptFields(encryptedData, key, fields) {
 }
 
 /**
- * Generate random token ID
- * @param {number} length - Length of token
- * @returns {Promise<string>} Random token
+ * Generate random token ID using nanoid
+ * @param {number} length - Length of token (default 21, nanoid standard)
+ * @returns {string} Random token ID
  */
-export async function generateTokenId(length = 32) {
-  const bytes = await randomBytes(length);
-  return bytes.toString('base64url').substring(0, length);
+export function generateTokenId(length = 21) {
+  return nanoid(length);
 }

@@ -47,7 +47,7 @@ export function evaluateCondition(value, condition) {
     return false;
   }
   
-  // Try to parse as number
+  // Try to parse as number or date, otherwise compare as strings
   let val = value;
   let cmp = compareValue;
   
@@ -58,14 +58,15 @@ export function evaluateCondition(value, condition) {
     val = new Date(value).getTime();
     cmp = new Date(compareValue).getTime();
   }
+  // For strings, keep them as is and use string comparison
   
   switch (operator) {
     case '>': return val > cmp;
     case '<': return val < cmp;
     case '>=': return val >= cmp;
     case '<=': return val <= cmp;
-    case '==': return val == cmp;
-    case '!=': return val != cmp;
+    case '==': return String(val) === String(cmp);
+    case '!=': return String(val) !== String(cmp);
     default: return false;
   }
 }

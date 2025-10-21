@@ -4,3 +4,4 @@ node_modules/
 zkic_chain_data/
 .zkic.lock
 docs/
+package-lock.json
