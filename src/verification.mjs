@@ -65,28 +65,43 @@ export function verifyMultipleConditions(block, tokenId, conditions, encryptionK
       return { result: false, error: 'Token not found' };
     }
     
+    // FIRST: Validate token has permission for ALL fields before any decryption
+    const unauthorizedFields = [];
+    for (const { field } of conditions) {
+      const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
+      if (!validation.valid) {
+        unauthorizedFields.push({ field, reason: validation.reason });
+      }
+    }
+    
+    // If any field is unauthorized, abort completely without decryption
+    if (unauthorizedFields.length > 0) {
+      return { 
+        result: false, 
+        error: 'Token lacks permission for one or more fields',
+        unauthorizedFields: unauthorizedFields
+      };
+    }
+    
+    // All fields authorized - now proceed with decryption and evaluation
     const details = [];
     let allPassed = true;
     
     for (const { field, condition } of conditions) {
-      // Validate token has permission for each field
-      const validation = tokenModule.validateTokenForUse(tokenId, token, block.metadata.ownerPubKey, field);
-      if (!validation.valid) {
-        return { result: false, error: validation.reason };
-      }
-      
       // Decrypt field
       const decryptedData = crypto.decryptFields(block.encryptedData, encryptionKey, [field]);
       
       if (!decryptedData[field]) {
-        return { result: false, error: `Field ${field} not found` };
+        details.push({ field, condition, passed: false, error: `Field ${field} not found` });
+        allPassed = false;
+        continue;
       }
       
       // Evaluate condition
-      const result = evaluateCondition(decryptedData[field], condition);
-      details.push({ field, condition, result });
+      const passed = evaluateCondition(decryptedData[field], condition);
+      details.push({ field, condition, passed });
       
-      if (!result) {
+      if (!passed) {
         allPassed = false;
       }
     }

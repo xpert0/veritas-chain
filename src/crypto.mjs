@@ -27,6 +27,17 @@ export async function generateEd25519KeyPair() {
 }
 
 /**
+ * Derive public key from Ed25519 private key
+ * @param {string} privateKey - PEM formatted private key
+ * @returns {string} PEM formatted public key
+ */
+export function derivePublicKeyFromPrivate(privateKey) {
+  const keyObject = crypto.createPrivateKey(privateKey);
+  const publicKey = crypto.createPublicKey(keyObject);
+  return publicKey.export({ type: 'spki', format: 'pem' });
+}
+
+/**
  * Sign data with Ed25519 private key
  * @param {string|Buffer} data - Data to sign
  * @param {string} privateKey - PEM formatted private key

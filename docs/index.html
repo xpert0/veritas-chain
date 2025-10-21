@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ZKIC - Zero-Knowledge Identity Chain API Documentation</title>
+    <title>Veritas-Chain - Zero-Knowledge Identity Chain API Documentation</title>
     <style>
         * {
             margin: 0;
@@ -190,13 +190,13 @@
 <body>
     <div class="container">
         <header>
-            <h1>🔐 ZKIC API Documentation</h1>
+            <h1>🔐 Veritas-Chain API Documentation</h1>
             <p class="subtitle">Zero-Knowledge Identity Chain - Decentralized Identity Ledger</p>
         </header>
 
         <div class="section">
             <h2>Overview</h2>
-            <p>ZKIC provides a decentralized identity management system with zero-knowledge proof verification. This API allows you to register identities, issue permission tokens, and perform selective field verification without revealing the actual data.</p>
+            <p>Veritas-Chain provides a decentralized identity management system with zero-knowledge proof verification. This API allows you to register identities, issue permission tokens, and perform selective field verification without revealing the actual data.</p>
             
             <div class="note">
                 <div class="note-title">Base URL</div>
@@ -272,10 +272,10 @@
                         <td>Identity data fields (name, dob, address, bloodGroup, etc.)</td>
                     </tr>
                     <tr>
-                        <td>registrarPublicKey</td>
+                        <td>registrarPrivateKey</td>
                         <td>string</td>
                         <td>Yes</td>
-                        <td>Public key of the authorized registrar (from config.json KeyRegistry)</td>
+                        <td>Private key of the authorized registrar (public key calculated internally and checked against config.json KeyRegistry)</td>
                     </tr>
                     <tr>
                         <td>registrarSignature</td>
@@ -309,7 +309,7 @@
       "fatherName": "Father Doe",
       "motherName": "Mother Doe"
     },
-    "registrarPublicKey": "registrar-pubkey-from-config",
+    "registrarPrivateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
     "registrarSignature": "signature-from-registrar",
     "parentKeys": ["father-pubkey", "mother-pubkey"]
   }'</code></pre>
@@ -318,7 +318,7 @@
                 <div id="register-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/register ^
   -H "Content-Type: application/json" ^
-  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"registrarPublicKey\": \"registrar-pubkey-from-config\", \"registrarSignature\": \"signature-from-registrar\", \"parentKeys\": [\"father-pubkey\", \"mother-pubkey\"]}"</code></pre>
+  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"registrarPrivateKey\": \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\", \"registrarSignature\": \"signature-from-registrar\", \"parentKeys\": [\"father-pubkey\", \"mother-pubkey\"]}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
@@ -374,7 +374,7 @@
                         <td>maxUses</td>
                         <td>number</td>
                         <td>Yes</td>
-                        <td>Maximum number of times this token can be used</td>
+                        <td>Maximum number of times this token can be used (must be between 1 and 5)</td>
                     </tr>
                 </table>
 
@@ -487,15 +487,24 @@
                 <pre><code>{
   "success": true,
   "results": [
-    {"field": "dob", "condition": "<= 2007-10-20", "result": true},
-    {"field": "bloodGroup", "condition": "== O+", "result": true}
+    {"field": "dob", "condition": "<= 2007-10-20", "passed": true},
+    {"field": "bloodGroup", "condition": "== O+", "passed": true}
   ],
   "allPassed": true
 }</code></pre>
 
+                <h3>Response (if token lacks permission)</h3>
+                <pre><code>{
+  "success": false,
+  "error": "Token lacks permission for one or more fields",
+  "unauthorizedFields": [
+    {"field": "dob", "reason": "Token does not have permission for field: dob"}
+  ]
+}</code></pre>
+
                 <div class="note">
-                    <div class="note-title">Zero-Knowledge Proof</div>
-                    The verification returns only true/false for each condition without revealing the actual field values. This preserves privacy while allowing selective disclosure of multiple conditions simultaneously.
+                    <div class="note-title">Zero-Knowledge Proof & Security</div>
+                    The verification validates ALL token permissions BEFORE any decryption occurs. If even one field is unauthorized, the request is rejected with HTTP 403 and no data is decrypted. When authorized, it returns only true/false for each condition without revealing actual field values, preserving privacy while allowing selective disclosure of multiple conditions simultaneously.
                 </div>
             </div>
 
@@ -607,16 +616,10 @@
                         <td>Current owner's private key for verification</td>
                     </tr>
                     <tr>
-                        <td>newPublicKey</td>
-                        <td>string</td>
-                        <td>Yes</td>
-                        <td>New owner's public key</td>
-                    </tr>
-                    <tr>
                         <td>newPrivateKey</td>
                         <td>string</td>
                         <td>Yes</td>
-                        <td>New owner's private key for signing</td>
+                        <td>New owner's private key for signing (public key calculated internally)</td>
                     </tr>
                     <tr>
                         <td>oldEncryptionKey</td>
@@ -638,7 +641,6 @@
   -d '{
     "blockHash": "...",
     "oldPrivateKey": "current-owner-private-key",
-    "newPublicKey": "new-owner-public-key",
     "newPrivateKey": "new-owner-private-key",
     "oldEncryptionKey": "base64-encoded-old-key"
   }'</code></pre>
@@ -647,17 +649,18 @@
                 <div id="rotate-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/rotate ^
   -H "Content-Type: application/json" ^
-  -d "{\"blockHash\": \"...\", \"oldPrivateKey\": \"current-owner-private-key\", \"newPublicKey\": \"new-owner-public-key\", \"newPrivateKey\": \"new-owner-private-key\", \"oldEncryptionKey\": \"base64-encoded-old-key\"}"</code></pre>
+  -d "{\"blockHash\": \"...\", \"oldPrivateKey\": \"current-owner-private-key\", \"newPrivateKey\": \"new-owner-private-key\", \"oldEncryptionKey\": \"base64-encoded-old-key\"}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
                 <pre><code>{
   "success": true,
   "blockHash": "...",
+  "newPublicKey": "...",
+  "newEncryptionKey": "...",
   "lifecycleStage": "guardian",
   "rotationNumber": 1,
-  "rotationsLeft": 4,
-  "newEncryptionKey": "..."
+  "rotationsLeft": 4
 }</code></pre>
 
                 <div class="note">
@@ -724,7 +727,7 @@
         </div>
 
         <footer>
-            <p>ZKIC - Zero-Knowledge Identity Chain &copy; 2025</p>
+            <p>Veritas-Chain - Zero-Knowledge Identity Chain &copy; 2025</p>
             <p>Decentralized • Privacy-Preserving • Tamper-Proof</p>
         </footer>
     </div>

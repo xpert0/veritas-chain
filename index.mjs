@@ -204,14 +204,17 @@ function handleGetChain(req, res) {
 async function handleRegister(req, res) {
   const body = await readBody(req);
   
-  if (!body.data || !body.registrarPublicKey || !body.registrarSignature || !body.parentKeys) {
-    sendJSON(res, 400, { error: 'Missing required fields: data, registrarPublicKey, registrarSignature, parentKeys' });
+  if (!body.data || !body.registrarPrivateKey || !body.registrarSignature || !body.parentKeys) {
+    sendJSON(res, 400, { error: 'Missing required fields: data, registrarPrivateKey, registrarSignature, parentKeys' });
     return;
   }
   
+  // Calculate public key from private key
+  const registrarPublicKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  
   // Verify registrar is authorized (from config.json KeyRegistry)
   const consensusConfig = config.getConsensusConfig();
-  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(body.registrarPublicKey)) {
+  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
     sendJSON(res, 403, { error: 'Registrar not authorized' });
     return;
   }
@@ -294,28 +297,22 @@ async function handleVerify(req, res) {
   // Decode encryption key
   const encryptionKey = Buffer.from(body.encryptionKey, 'base64');
   
-  // Verify all conditions
-  const results = [];
-  for (const cond of body.conditions) {
-    if (!cond.field || !cond.condition) {
-      results.push({ error: 'Each condition must have field and condition properties' });
-      continue;
-    }
-    
-    const result = verification.verifyCondition(
-      targetBlock,
-      body.tokenId,
-      cond.field,
-      cond.condition,
-      encryptionKey
-    );
-    
-    results.push({
-      field: cond.field,
-      condition: cond.condition,
-      result: result.result,
-      error: result.error
+  // Use verifyMultipleConditions which checks all permissions first
+  const verificationResult = verification.verifyMultipleConditions(
+    targetBlock,
+    body.tokenId,
+    body.conditions,
+    encryptionKey
+  );
+  
+  // If unauthorized fields detected, return early with 403
+  if (verificationResult.unauthorizedFields) {
+    sendJSON(res, 403, { 
+      success: false,
+      error: verificationResult.error,
+      unauthorizedFields: verificationResult.unauthorizedFields
     });
+    return;
   }
   
   // Update block with decremented token (only once for all conditions)
@@ -324,13 +321,13 @@ async function handleVerify(req, res) {
   logger.info('Zero-knowledge verification performed', { 
     blockHash: body.blockHash,
     conditionsCount: body.conditions.length,
-    allPassed: results.every(r => r.result === true)
+    allPassed: verificationResult.result
   });
   
   sendJSON(res, 200, { 
     success: true,
-    results: results,
-    allPassed: results.every(r => r.result === true)
+    results: verificationResult.details,
+    allPassed: verificationResult.result
   });
 }
 
@@ -342,6 +339,15 @@ async function handleIssueToken(req, res) {
   
   if (!body.blockHash || !body.ownerPrivateKey || !body.permissions || !body.maxUses) {
     sendJSON(res, 400, { error: 'Missing required fields' });
+    return;
+  }
+  
+  // Enforce max value of 5 for maxUses
+  if (body.maxUses > 5 || body.maxUses < 1) {
+    sendJSON(res, 400, { 
+      error: 'Invalid maxUses value',
+      message: 'maxUses must be between 1 and 5'
+    });
     return;
   }
   
@@ -383,7 +389,8 @@ async function handleIssueToken(req, res) {
   logger.info('Token issued', { 
     oldBlockHash: body.blockHash,
     newBlockHash: targetBlock.hash,
-    tokenId: tokenId
+    tokenId: tokenId,
+    maxUses: body.maxUses
   });
   
   sendJSON(res, 201, { 
@@ -450,8 +457,8 @@ async function handleUpdate(req, res) {
 async function handleRotate(req, res) {
   const body = await readBody(req);
   
-  if (!body.blockHash || !body.oldPrivateKey || !body.newPublicKey || !body.newPrivateKey || !body.oldEncryptionKey) {
-    sendJSON(res, 400, { error: 'Missing required fields: blockHash, oldPrivateKey, newPublicKey, newPrivateKey, oldEncryptionKey' });
+  if (!body.blockHash || !body.oldPrivateKey || !body.newPrivateKey || !body.oldEncryptionKey) {
+    sendJSON(res, 400, { error: 'Missing required fields: blockHash, oldPrivateKey, newPrivateKey, oldEncryptionKey' });
     return;
   }
   
@@ -471,9 +478,15 @@ async function handleRotate(req, res) {
   const oldPublicKey = targetBlock.metadata.ownerPubKey;
   
   if (!crypto.verifyEd25519(testData, testSig, oldPublicKey)) {
-    sendJSON(res, 403, { error: 'Old private key does not match block owner' });
+    sendJSON(res, 403, { 
+      success: false,
+      error: 'Old private key does not match block owner' 
+    });
     return;
   }
+  
+  // Calculate new public key from new private key
+  const newPublicKey = crypto.derivePublicKeyFromPrivate(body.newPrivateKey);
   
   // Calculate new lifecycle stage based on rotation count
   const currentStage = targetBlock.metadata.lifecycleStage;
@@ -505,7 +518,7 @@ async function handleRotate(req, res) {
     targetBlock,
     oldKey,
     newKey,
-    body.newPublicKey,
+    newPublicKey,
     body.newPrivateKey,
     newStage
   );
@@ -527,10 +540,11 @@ async function handleRotate(req, res) {
   sendJSON(res, 200, { 
     success: true,
     blockHash: targetBlock.hash,
+    newPublicKey: newPublicKey,
+    newEncryptionKey: newKey.toString('base64'),
     lifecycleStage: newStage,
     rotationNumber: rotationCount + 1,
-    rotationsLeft: targetBlock.metadata.rotationsLeft,
-    newEncryptionKey: newKey.toString('base64')
+    rotationsLeft: targetBlock.metadata.rotationsLeft
   });
 }
 
