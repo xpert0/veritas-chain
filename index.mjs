@@ -1,4 +1,7 @@
 import http from 'http';
+import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import * as logger from './src/logger.mjs';
 import * as config from './src/config.mjs';
 import * as crypto from './src/crypto.mjs';
@@ -9,6 +12,9 @@ import * as verification from './src/verification.mjs';
 import * as chain from './src/chain.mjs';
 import * as storage from './src/storage.mjs';
 import * as network from './src/network.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let httpServer = null;
 
@@ -47,13 +53,12 @@ async function bootstrap() {
         logger.info('Chain snapshot loaded', { blocks: data.snapshot.chain.length });
       }
     } else {
-      // Create new chain
+      // Create new chain - first peer must have master_key.json
       logger.info('No existing chain, creating new genesis...');
-      const masterKey = await genesis.generateMasterKeyPair();
-      const genesisSigners = await genesis.generateGenesisSigners(3);
-      const authorizedKeys = genesisSigners.map(s => s.publicKey);
+      logger.info('Loading master key from master_key.json...');
+      const masterKey = await genesis.loadMasterKeyFromFile();
       
-      const genesisBlock = await genesis.createGenesisBlock(authorizedKeys);
+      const genesisBlock = await genesis.createGenesisBlock();
       chain.initializeChain(genesisBlock);
       
       // Save initial state
@@ -144,7 +149,9 @@ async function startHTTPServer() {
 async function handleRequest(req, res, url) {
   const path = url.pathname;
   
-  if (req.method === 'GET' && path === '/api/chain') {
+  if (req.method === 'GET' && path === '/docs') {
+    handleDocs(req, res);
+  } else if (req.method === 'GET' && path === '/api/chain') {
     handleGetChain(req, res);
   } else if (req.method === 'POST' && path === '/api/register') {
     await handleRegister(req, res);
@@ -158,6 +165,22 @@ async function handleRequest(req, res, url) {
     await handleRotate(req, res);
   } else {
     sendJSON(res, 404, { error: 'Not found' });
+  }
+}
+
+/**
+ * Handle GET /docs
+ */
+async function handleDocs(req, res) {
+  try {
+    const docsPath = join(__dirname, 'docs', 'index.html');
+    const html = await readFile(docsPath, 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  } catch (error) {
+    logger.error('Failed to serve documentation', error);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Documentation not available');
   }
 }
 

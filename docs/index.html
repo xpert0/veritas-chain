@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZKIC - Zero-Knowledge Identity Chain API Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 0;
+            margin-bottom: 40px;
+            border-radius: 10px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .section {
+            background: #2a2a2a;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        h3 {
+            color: #9f7aea;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .endpoint {
+            background: #1a1a1a;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border: 1px solid #3a3a3a;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+
+        .get { background: #10b981; color: white; }
+        .post { background: #3b82f6; color: white; }
+        .put { background: #f59e0b; color: white; }
+        .delete { background: #ef4444; color: white; }
+
+        .path {
+            font-family: 'Courier New', monospace;
+            color: #fbbf24;
+            font-size: 1.1em;
+        }
+
+        pre {
+            background: #0d0d0d;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border: 1px solid #3a3a3a;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            color: #10b981;
+            font-size: 0.95em;
+        }
+
+        .description {
+            margin: 15px 0;
+            color: #b0b0b0;
+        }
+
+        .param-table {
+            width: 100%;
+            margin: 15px 0;
+            border-collapse: collapse;
+        }
+
+        .param-table th,
+        .param-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .param-table th {
+            background: #3a3a3a;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .param-table tr:hover {
+            background: #252525;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .tab {
+            padding: 8px 20px;
+            background: #3a3a3a;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            background: #4a4a4a;
+        }
+
+        .tab.active {
+            background: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .note {
+            background: #3b2f00;
+            border-left: 4px solid #fbbf24;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .note-title {
+            font-weight: bold;
+            color: #fbbf24;
+            margin-bottom: 5px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px 0;
+            margin-top: 40px;
+            border-top: 1px solid #3a3a3a;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 ZKIC API Documentation</h1>
+            <p class="subtitle">Zero-Knowledge Identity Chain - Decentralized Identity Ledger</p>
+        </header>
+
+        <div class="section">
+            <h2>Overview</h2>
+            <p>ZKIC provides a decentralized identity management system with zero-knowledge proof verification. This API allows you to register identities, issue permission tokens, and perform selective field verification without revealing the actual data.</p>
+            
+            <div class="note">
+                <div class="note-title">Base URL</div>
+                <code>http://localhost:8081/api</code>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Endpoints</h2>
+
+            <!-- GET /api/chain -->
+            <div class="endpoint">
+                <div>
+                    <span class="method get">GET</span>
+                    <span class="path">/chain</span>
+                </div>
+                <p class="description">Get blockchain health and metadata</p>
+                
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'chain-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'chain-windows')">Windows</div>
+                </div>
+                
+                <div id="chain-linux" class="tab-content active">
+                    <pre><code>curl -X GET http://localhost:8081/api/chain</code></pre>
+                </div>
+                
+                <div id="chain-windows" class="tab-content">
+                    <pre><code>curl.exe -X GET http://localhost:8081/api/chain</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "chain": {
+    "chainId": "...",
+    "length": 0,
+    "chainHash": "...",
+    "chainSignature": "...",
+    "masterPubKey": "...",
+    "lastUpdated": null
+  },
+  "network": {
+    "peerId": "peer-...",
+    "activePeers": 0,
+    "isServerRunning": true,
+    "timestamp": 1234567890
+  },
+  "health": "healthy"
+}</code></pre>
+            </div>
+
+            <!-- POST /api/register -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/register</span>
+                </div>
+                <p class="description">Register a new identity on the blockchain</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>data</td>
+                        <td>object</td>
+                        <td>Yes</td>
+                        <td>Identity data fields (name, dob, address, bloodGroup, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td>ownerPublicKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Public key of the identity owner</td>
+                    </tr>
+                    <tr>
+                        <td>signatures</td>
+                        <td>array</td>
+                        <td>Yes</td>
+                        <td>Array of signatures from authorized genesis signers (min 2)</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'register-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'register-windows')">Windows</div>
+                </div>
+                
+                <div id="register-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "name": "John Doe",
+      "dob": "1990-05-15",
+      "address": "123 Main St",
+      "bloodGroup": "O+",
+      "fatherName": "Father Doe",
+      "motherName": "Mother Doe"
+    },
+    "ownerPublicKey": "temp-key",
+    "signatures": ["sig1", "sig2", "sig3"]
+  }'</code></pre>
+                </div>
+                
+                <div id="register-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/register ^
+  -H "Content-Type: application/json" ^
+  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"ownerPublicKey\": \"temp-key\", \"signatures\": [\"sig1\", \"sig2\", \"sig3\"]}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "success": true,
+  "blockHash": "...",
+  "ownerPublicKey": "...",
+  "ownerPrivateKey": "...",
+  "encryptionKey": "..."
+}</code></pre>
+            </div>
+
+            <!-- POST /api/token -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/token</span>
+                </div>
+                <p class="description">Issue a permission token for selective field access</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>blockHash</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Hash of the identity block</td>
+                    </tr>
+                    <tr>
+                        <td>ownerPrivateKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Private key of the block owner</td>
+                    </tr>
+                    <tr>
+                        <td>permissions</td>
+                        <td>array</td>
+                        <td>Yes</td>
+                        <td>Array of field names this token can access</td>
+                    </tr>
+                    <tr>
+                        <td>maxUses</td>
+                        <td>number</td>
+                        <td>Yes</td>
+                        <td>Maximum number of times this token can be used</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'token-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'token-windows')">Windows</div>
+                </div>
+                
+                <div id="token-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "blockHash": "...",
+    "ownerPrivateKey": "...",
+    "permissions": ["dob", "bloodGroup"],
+    "maxUses": 5
+  }'</code></pre>
+                </div>
+                
+                <div id="token-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/token ^
+  -H "Content-Type: application/json" ^
+  -d "{\"blockHash\": \"...\", \"ownerPrivateKey\": \"...\", \"permissions\": [\"dob\", \"bloodGroup\"], \"maxUses\": 5}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "success": true,
+  "blockHash": "...",
+  "token": {
+    "id": "...",
+    "permissions": ["dob", "bloodGroup"],
+    "remainingUses": 5,
+    "issuedAt": 1234567890,
+    "signature": "..."
+  }
+}</code></pre>
+            </div>
+
+            <!-- POST /api/verify -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/verify</span>
+                </div>
+                <p class="description">Perform zero-knowledge verification on a field</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>blockHash</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Hash of the identity block</td>
+                    </tr>
+                    <tr>
+                        <td>tokenId</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Token ID with permission to access the field</td>
+                    </tr>
+                    <tr>
+                        <td>field</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Field name to verify</td>
+                    </tr>
+                    <tr>
+                        <td>condition</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Condition to evaluate (e.g., "<= 2007-10-20", "== O+")</td>
+                    </tr>
+                    <tr>
+                        <td>encryptionKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Base64 encoded encryption key</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'verify-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'verify-windows')">Windows</div>
+                </div>
+                
+                <div id="verify-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "blockHash": "...",
+    "tokenId": "...",
+    "field": "dob",
+    "condition": "<= 2007-10-20",
+    "encryptionKey": "..."
+  }'</code></pre>
+                </div>
+                
+                <div id="verify-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/verify ^
+  -H "Content-Type: application/json" ^
+  -d "{\"blockHash\": \"...\", \"tokenId\": \"...\", \"field\": \"dob\", \"condition\": \"<= 2007-10-20\", \"encryptionKey\": \"...\"}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "result": true
+}</code></pre>
+
+                <div class="note">
+                    <div class="note-title">Zero-Knowledge Proof</div>
+                    The verification returns only true/false without revealing the actual field value. This preserves privacy while allowing selective disclosure.
+                </div>
+            </div>
+
+            <!-- POST /api/update -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/update</span>
+                </div>
+                <p class="description">Update identity data or register death</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>blockHash</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Hash of the identity block</td>
+                    </tr>
+                    <tr>
+                        <td>newData</td>
+                        <td>object</td>
+                        <td>Yes</td>
+                        <td>Updated data fields</td>
+                    </tr>
+                    <tr>
+                        <td>encryptionKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Base64 encoded encryption key</td>
+                    </tr>
+                    <tr>
+                        <td>ownerPrivateKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Private key of the block owner</td>
+                    </tr>
+                    <tr>
+                        <td>signatures</td>
+                        <td>array</td>
+                        <td>Yes</td>
+                        <td>Array of signatures from authorized signers (min 3)</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'update-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'update-windows')">Windows</div>
+                </div>
+                
+                <div id="update-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "blockHash": "...",
+    "newData": {"address": "456 New Street"},
+    "encryptionKey": "...",
+    "ownerPrivateKey": "...",
+    "signatures": ["sig1", "sig2", "sig3"]
+  }'</code></pre>
+                </div>
+                
+                <div id="update-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/update ^
+  -H "Content-Type: application/json" ^
+  -d "{\"blockHash\": \"...\", \"newData\": {\"address\": \"456 New Street\"}, \"encryptionKey\": \"...\", \"ownerPrivateKey\": \"...\", \"signatures\": [\"sig1\", \"sig2\", \"sig3\"]}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "success": true,
+  "blockHash": "..."
+}</code></pre>
+            </div>
+
+            <!-- POST /api/rotate -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/rotate</span>
+                </div>
+                <p class="description">Rotate encryption keys (lifecycle transition)</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>blockHash</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Hash of the identity block</td>
+                    </tr>
+                    <tr>
+                        <td>oldKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Base64 encoded old encryption key</td>
+                    </tr>
+                    <tr>
+                        <td>newStage</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>New lifecycle stage (guardian, self)</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'rotate-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'rotate-windows')">Windows</div>
+                </div>
+                
+                <div id="rotate-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/rotate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "blockHash": "...",
+    "oldKey": "...",
+    "newStage": "guardian"
+  }'</code></pre>
+                </div>
+                
+                <div id="rotate-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/rotate ^
+  -H "Content-Type: application/json" ^
+  -d "{\"blockHash\": \"...\", \"oldKey\": \"...\", \"newStage\": \"guardian\"}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "success": true,
+  "blockHash": "...",
+  "newOwnerPublicKey": "...",
+  "newOwnerPrivateKey": "...",
+  "newEncryptionKey": "..."
+}</code></pre>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Lifecycle Stages</h2>
+            <table class="param-table">
+                <tr>
+                    <th>Stage</th>
+                    <th>Keypair</th>
+                    <th>Trigger</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>Genesis</td>
+                    <td>Genesis Key (Hospital)</td>
+                    <td>Newborn registration</td>
+                    <td>Initial block creation</td>
+                </tr>
+                <tr>
+                    <td>Guardian</td>
+                    <td>Guardian Key</td>
+                    <td>At age 5</td>
+                    <td>Block re-encrypted with guardian's key</td>
+                </tr>
+                <tr>
+                    <td>Self</td>
+                    <td>Personal Key</td>
+                    <td>At age 18</td>
+                    <td>Block re-encrypted with personal key</td>
+                </tr>
+                <tr>
+                    <td>Expired</td>
+                    <td>None</td>
+                    <td>Death + 3 years grace</td>
+                    <td>Block pruned from chain</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Security & Privacy</h2>
+            <h3>Cryptographic Algorithms</h3>
+            <ul style="margin-left: 20px; color: #b0b0b0;">
+                <li><strong>Hashing:</strong> SHA-512 for block integrity</li>
+                <li><strong>Symmetric Encryption:</strong> AES-256-GCM for field-level data encryption</li>
+                <li><strong>Asymmetric Keys:</strong> Ed25519 for signatures and authentication</li>
+                <li><strong>Token IDs:</strong> Nanoid for secure, URL-safe identifiers</li>
+            </ul>
+
+            <h3>Zero-Knowledge Proofs</h3>
+            <p>The verification endpoint allows checking conditions on encrypted data without revealing the actual values. Only boolean results are returned, preserving privacy while enabling selective disclosure.</p>
+        </div>
+
+        <footer>
+            <p>ZKIC - Zero-Knowledge Identity Chain &copy; 2025</p>
+            <p>Decentralized • Privacy-Preserving • Tamper-Proof</p>
+        </footer>
+    </div>
+
+    <script>
+        function showTab(evt, tabId) {
+            // Get all elements with class="tab-content" in the same endpoint
+            const endpoint = evt.target.closest('.endpoint');
+            const tabContents = endpoint.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+
+            // Get all elements with class="tab" and remove active
+            const tabs = endpoint.getElementsByClassName('tab');
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+
+            // Show the current tab, and add an "active" class to the button that opened the tab
+            document.getElementById(tabId).classList.add('active');
+            evt.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

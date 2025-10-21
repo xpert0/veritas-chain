@@ -3,12 +3,13 @@
     "httpPort": 8081,
     "p2pPort": 6000,
     "discoveryDNS": "veritas.xpert0.in",
-    "ipDiscovery": true
+    "ipDiscovery": true,
+    "subnet": "192.168.1.0/24"
   },
   "security": {
     "hashAlgorithm": "sha512",
-    "symmetricEncryption": "aes-256-gcm",
-    "asymmetricEncryption": "ed25519",
+    "encryption": "aes-256-gcm",
+    "asymmetric": "ed25519",
     "tokenLength": 64
   },
   "identity": {
@@ -23,8 +24,8 @@
     "mode": "APoC",
     "KeyRegistry": [
       "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANpCGY1tLCSCTmwn0rn4KpKW0NlPP944GLzRrW0hdzOA=\n-----END PUBLIC KEY-----\n",
-   	  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxgOy/iqzTJGKDrMb+VdO4/dZNjUGfcNGz9IlZav94Z4=\n-----END PUBLIC KEY-----\n",
-  	  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAu+Uvkdf8vOV+A+z2re3CUdlWp5U4JgjYj5upANAonY=\n-----END PUBLIC KEY-----\n"
+      "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxgOy/iqzTJGKDrMb+VdO4/dZNjUGfcNGz9IlZav94Z4=\n-----END PUBLIC KEY-----\n",
+      "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAu+Uvkdf8vOV+A+z2re3CUdlWp5U4JgjYj5upANAonY=\n-----END PUBLIC KEY-----\n"
     ],
     "requiredSignatures": {
       "registration": 2,
@@ -54,15 +55,6 @@
     "chainId": "",
     "createdAt": 0,
     "masterPubKey": "",
-    "signingPolicy": {
-      "registration": 2,
-      "update": 3
-    },
-    "networkMetadata": {
-      "encryption": "aes-256-gcm",
-      "hashing": "sha512",
-      "asymmetric": "ed25519"
-    },
     "chainSignature": ""
   },
   "storage": {

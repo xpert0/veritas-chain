@@ -2,9 +2,32 @@ import * as crypto from './crypto.mjs';
 import * as logger from './logger.mjs';
 import { getCurrentTimestamp, deepClone } from './utils.mjs';
 import { getGenesisTemplate, getConsensusConfig } from './config.mjs';
+import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let masterKeyPair = null;
 let genesisBlock = null;
+
+/**
+ * Load master keypair from master_key.json file
+ * @returns {Promise<{publicKey: string, privateKey: string}>}
+ */
+export async function loadMasterKeyFromFile() {
+  try {
+    const keyPath = join(__dirname, '..', 'master_key.json');
+    const data = await readFile(keyPath, 'utf8');
+    masterKeyPair = JSON.parse(data);
+    logger.info('Master keypair loaded from file');
+    return masterKeyPair;
+  } catch (error) {
+    logger.error('Failed to load master key from file', error.message);
+    throw new Error('master_key.json file is required for first peer bootstrap');
+  }
+}
 
 /**
  * Generate master keypair for chain authentication
@@ -49,16 +72,14 @@ export async function generateGenesisSigners(count = 3) {
 
 /**
  * Create genesis block
- * @param {Array<string>} authorizedKeys - Public keys of authorized genesis signers
  * @returns {Promise<Object>} Genesis block
  */
-export async function createGenesisBlock(authorizedKeys) {
+export async function createGenesisBlock() {
   if (!masterKeyPair) {
-    await generateMasterKeyPair();
+    throw new Error('Master key must be loaded before creating genesis block');
   }
   
   const template = deepClone(getGenesisTemplate());
-  const consensusConfig = getConsensusConfig();
   
   const chainId = crypto.sha512(`genesis-${Date.now()}-${Math.random()}`);
   
@@ -66,18 +87,14 @@ export async function createGenesisBlock(authorizedKeys) {
     ...template,
     chainId,
     createdAt: getCurrentTimestamp(),
-    masterPubKey: masterKeyPair.publicKey,
-    authorizedGenesisKeys: authorizedKeys || consensusConfig.genesisKeyRegistry,
-    signingPolicy: consensusConfig.requiredSignatures
+    masterPubKey: masterKeyPair.publicKey
   };
   
   // Sign the genesis block with master key
   const genesisData = JSON.stringify({
     chainId: genesisBlock.chainId,
     createdAt: genesisBlock.createdAt,
-    masterPubKey: genesisBlock.masterPubKey,
-    authorizedGenesisKeys: genesisBlock.authorizedGenesisKeys,
-    signingPolicy: genesisBlock.signingPolicy
+    masterPubKey: genesisBlock.masterPubKey
   });
   
   genesisBlock.chainSignature = crypto.signEd25519(genesisData, masterKeyPair.privateKey);
@@ -115,9 +132,7 @@ export function verifyGenesisBlock(block) {
   const genesisData = JSON.stringify({
     chainId: block.chainId,
     createdAt: block.createdAt,
-    masterPubKey: block.masterPubKey,
-    authorizedGenesisKeys: block.authorizedGenesisKeys,
-    signingPolicy: block.signingPolicy
+    masterPubKey: block.masterPubKey
   });
   
   return crypto.verifyEd25519(genesisData, block.chainSignature, block.masterPubKey);
@@ -129,10 +144,8 @@ export function verifyGenesisBlock(block) {
  * @returns {boolean} True if authorized
  */
 export function isAuthorizedGenesisSigner(publicKey) {
-  if (!genesisBlock) {
-    return false;
-  }
-  return genesisBlock.authorizedGenesisKeys.includes(publicKey);
+  const consensusConfig = getConsensusConfig();
+  return consensusConfig.KeyRegistry.includes(publicKey);
 }
 
 /**
@@ -141,13 +154,12 @@ export function isAuthorizedGenesisSigner(publicKey) {
  * @returns {number} Required signature count
  */
 export function getRequiredSignatures(operation) {
-  if (!genesisBlock) {
-    return 0;
-  }
-  return genesisBlock.signingPolicy[operation] || 0;
+  const consensusConfig = getConsensusConfig();
+  return consensusConfig.requiredSignatures[operation] || 0;
 }
 
 export default {
+  loadMasterKeyFromFile,
   generateMasterKeyPair,
   getMasterKeyPair,
   setMasterKeyPair,
