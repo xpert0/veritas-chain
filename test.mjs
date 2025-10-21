@@ -6,7 +6,7 @@
 
 import http from 'http';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = 'http://localhost:8081/api';
 
 /**
  * Make HTTP request
@@ -15,7 +15,7 @@ function request(method, path, data = null) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'localhost',
-      port: 8080,
+      port: 8081,
       path: `/api${path}`,
       method,
       headers: { 'Content-Type': 'application/json' }

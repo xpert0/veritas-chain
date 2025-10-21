@@ -511,9 +511,6 @@ async function shutdown() {
     // Stop automatic snapshots
     storage.stopAutoSnapshot();
     
-    // Release storage lock
-    await storage.cleanup();
-    
     // Close HTTP server
     if (httpServer) {
       httpServer.close(() => {

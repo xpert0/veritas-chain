@@ -5,13 +5,11 @@ import * as genesis from './genesis.mjs';
 import * as chain from './chain.mjs';
 import { getStorageConfig } from './config.mjs';
 
-const LOCK_FILE = '.zkic.lock';
 const CHAIN_FILE = 'chain.json';
 const GENESIS_FILE = 'genesis.json';
 const MASTER_KEY_FILE = 'master_key.json';
 
 let storagePath = null;
-let lockAcquired = false;
 let snapshotInterval = null;
 
 /**
@@ -31,67 +29,7 @@ export async function initStorage() {
     }
   }
   
-  // Acquire lock
-  await acquireLock();
-  
   logger.info('Storage initialized', { path: storagePath });
-}
-
-/**
- * Acquire storage lock
- * @returns {Promise<void>}
- */
-async function acquireLock() {
-  const lockPath = path.join(storagePath, LOCK_FILE);
-  
-  try {
-    // Try to read existing lock
-    const lockData = await fs.readFile(lockPath, 'utf8');
-    const lock = JSON.parse(lockData);
-    
-    // Check if lock is stale (more than 5 minutes old)
-    const now = Date.now();
-    if (now - lock.timestamp < 5 * 60 * 1000) {
-      throw new Error('Storage is locked by another process');
-    }
-    
-    logger.warn('Stale lock detected, overriding');
-  } catch (error) {
-    if (error.code !== 'ENOENT' && error.message.includes('locked')) {
-      throw error;
-    }
-  }
-  
-  // Create lock
-  const lock = {
-    pid: process.pid,
-    timestamp: Date.now()
-  };
-  
-  await fs.writeFile(lockPath, JSON.stringify(lock, null, 2));
-  lockAcquired = true;
-  
-  logger.debug('Storage lock acquired');
-}
-
-/**
- * Release storage lock
- * @returns {Promise<void>}
- */
-export async function releaseLock() {
-  if (!lockAcquired || !storagePath) {
-    return;
-  }
-  
-  const lockPath = path.join(storagePath, LOCK_FILE);
-  
-  try {
-    await fs.unlink(lockPath);
-    lockAcquired = false;
-    logger.debug('Storage lock released');
-  } catch (error) {
-    logger.warn('Failed to release lock', error.message);
-  }
 }
 
 /**
@@ -291,19 +229,8 @@ export async function saveAll() {
   logger.info('All data saved to storage');
 }
 
-/**
- * Clean up storage (release lock, stop snapshots)
- * @returns {Promise<void>}
- */
-export async function cleanup() {
-  stopAutoSnapshot();
-  await releaseLock();
-  logger.debug('Storage cleanup completed');
-}
-
 export default {
   initStorage,
-  releaseLock,
   saveGenesis,
   loadGenesis,
   saveMasterKey,
@@ -313,6 +240,5 @@ export default {
   startAutoSnapshot,
   stopAutoSnapshot,
   loadAll,
-  saveAll,
-  cleanup
+  saveAll
 };
