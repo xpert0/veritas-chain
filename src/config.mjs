@@ -153,7 +153,19 @@ export function getGenesisTemplate() {
  * @returns {Object} Protocol config
  */
 export function getProtocolConfig() {
-  return getConfig().protocol;
+  if (!config.protocol) {
+    throw new Error('Protocol configuration missing');
+  }
+  
+  // Validate protocol parameters
+  if (typeof config.protocol.internalSegmentSize !== 'number' || config.protocol.internalSegmentSize < 1) {
+    throw new Error('protocol.internalSegmentSize must be a positive number');
+  }
+  if (typeof config.protocol.internalOffsetBounds !== 'number' || config.protocol.internalOffsetBounds < 1) {
+    throw new Error('protocol.internalOffsetBounds must be a positive number');
+  }
+  
+  return config.protocol;
 }
 
 export default {

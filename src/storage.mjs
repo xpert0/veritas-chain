@@ -101,16 +101,18 @@ export async function loadGenesis(stripConcealment = false) {
 
 /**
  * Conceal master key by encoding it to look like random handshake data
- * Injects random characters at intervals so each peer sees different values
+ * Injects random characters at regular intervals so each peer sees different values
  * @param {Object} keyPair - Master key pair
  * @param {string} chainId - Chain ID for additional entropy
  * @returns {string} Concealed token string
  */
 function concealMasterKey(keyPair, chainId) {
   // Get protocol config for internal segment settings
+  // internalOffsetBounds = interval (inject after every N chars)
+  // internalSegmentSize = fixed injection size (always inject exactly N chars)
   const protocolConfig = getProtocolConfig();
-  const chunkSize = protocolConfig.internalSegmentSize || 16;
-  const [minPadding, maxPadding] = protocolConfig.internalOffsetBounds || [8, 16];
+  const interval = protocolConfig.internalOffsetBounds || 16;
+  const injectionSize = protocolConfig.internalSegmentSize || 2;
   
   // Convert keypair to JSON string
   const keyData = JSON.stringify(keyPair);
@@ -138,25 +140,18 @@ function concealMasterKey(keyPair, chainId) {
   // Combine IV + encrypted data + auth tag into a single hex string
   const baseConcealed = iv.toString('hex') + encrypted + authTag.toString('hex');
   
-  // Inject random characters at intervals to make it look different on each peer
-  // Use chain ID to derive deterministic noise pattern so revelation can extract correctly
-  const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
-  const paddingRange = maxPadding - minPadding + 1;
-  
+  // Inject fixed-size random characters at regular intervals
+  // This makes it look different on each peer while maintaining deterministic extraction pattern
   let concealed = '';
-  let chunkNum = 0;
-  for (let i = 0; i < baseConcealed.length; i += chunkSize) {
-    const chunk = baseConcealed.substring(i, i + chunkSize);
+  for (let i = 0; i < baseConcealed.length; i += interval) {
+    const chunk = baseConcealed.substring(i, i + interval);
     concealed += chunk;
     
-    // Add random padding between chunks (except at the end)
-    if (i + chunkSize < baseConcealed.length) {
-      // Generate noise length deterministically from chain seed for this chunk
-      const noiseLength = minPadding + (chainSeed[chunkNum % chainSeed.length] % paddingRange);
-      // But generate truly random noise content (different per peer)
-      const noise = crypto.randomBytes(Math.ceil(noiseLength / 2)).toString('hex').substring(0, noiseLength);
+    // Add fixed-size random padding between chunks (except at the end)
+    if (i + interval < baseConcealed.length) {
+      // Generate truly random noise content (different per peer)
+      const noise = crypto.randomBytes(Math.ceil(injectionSize / 2)).toString('hex').substring(0, injectionSize);
       concealed += noise;
-      chunkNum++;
     }
   }
   
@@ -165,7 +160,7 @@ function concealMasterKey(keyPair, chainId) {
 
 /**
  * Reveal master key from concealed token
- * Extracts actual data by skipping random noise at intervals
+ * Extracts actual data by skipping fixed-size random noise at regular intervals
  * @param {string} concealedToken - Concealed token string with injected noise
  * @param {string} chainId - Chain ID for decryption
  * @returns {Object} Master key pair
@@ -173,27 +168,25 @@ function concealMasterKey(keyPair, chainId) {
 function revealMasterKey(concealedToken, chainId) {
   try {
     // Get protocol config for internal segment settings
+    // internalOffsetBounds = interval (inject after every N chars)
+    // internalSegmentSize = fixed injection size (always inject exactly N chars)
     const protocolConfig = getProtocolConfig();
-    const chunkSize = protocolConfig.internalSegmentSize || 16;
-    const [minPadding, maxPadding] = protocolConfig.internalOffsetBounds || [8, 16];
-    const paddingRange = maxPadding - minPadding + 1;
+    const interval = protocolConfig.internalOffsetBounds || 16;
+    const injectionSize = protocolConfig.internalSegmentSize || 2;
     
-    // Regenerate the noise pattern deterministically from chain ID
-    const chainSeed = crypto.createHash('sha256').update(chainId + DERIVATION_SALT).digest();
     let baseConcealed = '';
     let readPos = 0;
     let chunkNum = 0;
     
     while (readPos < concealedToken.length) {
-      // Read chunkSize chars of real data
-      const chunk = concealedToken.substring(readPos, readPos + chunkSize);
+      // Read interval chars of real data
+      const chunk = concealedToken.substring(readPos, readPos + interval);
       if (chunk.length === 0) break;
       baseConcealed += chunk;
-      readPos += chunkSize;
+      readPos += interval;
       
-      // Calculate noise length for this chunk using chain seed
-      const noiseLength = minPadding + (chainSeed[chunkNum % chainSeed.length] % paddingRange);
-      readPos += noiseLength; // Skip the noise
+      // Skip the fixed-size noise
+      readPos += injectionSize;
       chunkNum++;
       
       // Safety check to prevent infinite loops

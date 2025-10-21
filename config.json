@@ -62,7 +62,7 @@
     "path": "./zkic_chain_data"
   },
   "protocol": {
-    "internalSegmentSize": 16,
-    "internalOffsetBounds": [8, 16]
+    "internalSegmentSize": 2,
+    "internalOffsetBounds": 16
   }
 }
