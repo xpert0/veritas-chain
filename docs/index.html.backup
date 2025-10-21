@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZKIC - Zero-Knowledge Identity Chain API Documentation</title>
     <style>
         * {
@@ -255,7 +256,7 @@
                     <span class="method post">POST</span>
                     <span class="path">/register</span>
                 </div>
-                <p class="description">Register a new identity on the blockchain (newborn registration)</p>
+                <p class="description">Register a new identity on the blockchain</p>
                 
                 <h3>Request Body</h3>
                 <table class="param-table">
@@ -272,22 +273,16 @@
                         <td>Identity data fields (name, dob, address, bloodGroup, etc.)</td>
                     </tr>
                     <tr>
-                        <td>registrarPublicKey</td>
+                        <td>ownerPublicKey</td>
                         <td>string</td>
                         <td>Yes</td>
-                        <td>Public key of the authorized registrar (from config.json KeyRegistry)</td>
+                        <td>Public key of the identity owner</td>
                     </tr>
                     <tr>
-                        <td>registrarSignature</td>
-                        <td>string</td>
-                        <td>Yes</td>
-                        <td>Signature from the authorized registrar</td>
-                    </tr>
-                    <tr>
-                        <td>parentKeys</td>
+                        <td>signatures</td>
                         <td>array</td>
                         <td>Yes</td>
-                        <td>Array of parent public keys (at least 1 required, both preferred)</td>
+                        <td>Array of signatures from authorized genesis signers (min 2)</td>
                     </tr>
                 </table>
 
@@ -309,16 +304,15 @@
       "fatherName": "Father Doe",
       "motherName": "Mother Doe"
     },
-    "registrarPublicKey": "registrar-pubkey-from-config",
-    "registrarSignature": "signature-from-registrar",
-    "parentKeys": ["father-pubkey", "mother-pubkey"]
+    "ownerPublicKey": "temp-key",
+    "signatures": ["sig1", "sig2", "sig3"]
   }'</code></pre>
                 </div>
                 
                 <div id="register-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/register ^
   -H "Content-Type: application/json" ^
-  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"registrarPublicKey\": \"registrar-pubkey-from-config\", \"registrarSignature\": \"signature-from-registrar\", \"parentKeys\": [\"father-pubkey\", \"mother-pubkey\"]}"</code></pre>
+  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"ownerPublicKey\": \"temp-key\", \"signatures\": [\"sig1\", \"sig2\", \"sig3\"]}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
@@ -329,11 +323,6 @@
   "ownerPrivateKey": "...",
   "encryptionKey": "..."
 }</code></pre>
-
-                <div class="note">
-                    <div class="note-title">Parent Keys Required</div>
-                    The system requires at least one parent key (both preferred) to establish family lineage. The registrar must be authorized in config.json KeyRegistry.
-                </div>
             </div>
 
             <!-- POST /api/token -->
@@ -421,7 +410,7 @@
                     <span class="method post">POST</span>
                     <span class="path">/verify</span>
                 </div>
-                <p class="description">Perform zero-knowledge verification on multiple fields</p>
+                <p class="description">Perform zero-knowledge verification on a field</p>
                 
                 <h3>Request Body</h3>
                 <table class="param-table">
@@ -441,13 +430,19 @@
                         <td>tokenId</td>
                         <td>string</td>
                         <td>Yes</td>
-                        <td>Token ID with permission to access the fields</td>
+                        <td>Token ID with permission to access the field</td>
                     </tr>
                     <tr>
-                        <td>conditions</td>
-                        <td>array</td>
+                        <td>field</td>
+                        <td>string</td>
                         <td>Yes</td>
-                        <td>Array of condition objects [{field, condition}, ...]</td>
+                        <td>Field name to verify</td>
+                    </tr>
+                    <tr>
+                        <td>condition</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Condition to evaluate (e.g., "<= 2007-10-20", "== O+")</td>
                     </tr>
                     <tr>
                         <td>encryptionKey</td>
@@ -469,10 +464,8 @@
   -d '{
     "blockHash": "...",
     "tokenId": "...",
-    "conditions": [
-      {"field": "dob", "condition": "<= 2007-10-20"},
-      {"field": "bloodGroup", "condition": "== O+"}
-    ],
+    "field": "dob",
+    "condition": "<= 2007-10-20",
     "encryptionKey": "..."
   }'</code></pre>
                 </div>
@@ -480,22 +473,17 @@
                 <div id="verify-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/verify ^
   -H "Content-Type: application/json" ^
-  -d "{\"blockHash\": \"...\", \"tokenId\": \"...\", \"conditions\": [{\"field\": \"dob\", \"condition\": \"<= 2007-10-20\"}, {\"field\": \"bloodGroup\", \"condition\": \"== O+\"}], \"encryptionKey\": \"...\"}"</code></pre>
+  -d "{\"blockHash\": \"...\", \"tokenId\": \"...\", \"field\": \"dob\", \"condition\": \"<= 2007-10-20\", \"encryptionKey\": \"...\"}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
                 <pre><code>{
-  "success": true,
-  "results": [
-    {"field": "dob", "condition": "<= 2007-10-20", "result": true},
-    {"field": "bloodGroup", "condition": "== O+", "result": true}
-  ],
-  "allPassed": true
+  "result": true
 }</code></pre>
 
                 <div class="note">
                     <div class="note-title">Zero-Knowledge Proof</div>
-                    The verification returns only true/false for each condition without revealing the actual field values. This preserves privacy while allowing selective disclosure of multiple conditions simultaneously.
+                    The verification returns only true/false without revealing the actual field value. This preserves privacy while allowing selective disclosure.
                 </div>
             </div>
 
@@ -584,7 +572,7 @@
                     <span class="method post">POST</span>
                     <span class="path">/rotate</span>
                 </div>
-                <p class="description">Rotate encryption keys (lifecycle transition - automatic stage calculation)</p>
+                <p class="description">Rotate encryption keys (lifecycle transition)</p>
                 
                 <h3>Request Body</h3>
                 <table class="param-table">
@@ -601,28 +589,16 @@
                         <td>Hash of the identity block</td>
                     </tr>
                     <tr>
-                        <td>oldPrivateKey</td>
-                        <td>string</td>
-                        <td>Yes</td>
-                        <td>Current owner's private key for verification</td>
-                    </tr>
-                    <tr>
-                        <td>newPublicKey</td>
-                        <td>string</td>
-                        <td>Yes</td>
-                        <td>New owner's public key</td>
-                    </tr>
-                    <tr>
-                        <td>newPrivateKey</td>
-                        <td>string</td>
-                        <td>Yes</td>
-                        <td>New owner's private key for signing</td>
-                    </tr>
-                    <tr>
-                        <td>oldEncryptionKey</td>
+                        <td>oldKey</td>
                         <td>string</td>
                         <td>Yes</td>
                         <td>Base64 encoded old encryption key</td>
+                    </tr>
+                    <tr>
+                        <td>newStage</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>New lifecycle stage (guardian, self)</td>
                     </tr>
                 </table>
 
@@ -637,39 +613,25 @@
   -H "Content-Type: application/json" \
   -d '{
     "blockHash": "...",
-    "oldPrivateKey": "current-owner-private-key",
-    "newPublicKey": "new-owner-public-key",
-    "newPrivateKey": "new-owner-private-key",
-    "oldEncryptionKey": "base64-encoded-old-key"
+    "oldKey": "...",
+    "newStage": "guardian"
   }'</code></pre>
                 </div>
                 
                 <div id="rotate-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/rotate ^
   -H "Content-Type: application/json" ^
-  -d "{\"blockHash\": \"...\", \"oldPrivateKey\": \"current-owner-private-key\", \"newPublicKey\": \"new-owner-public-key\", \"newPrivateKey\": \"new-owner-private-key\", \"oldEncryptionKey\": \"base64-encoded-old-key\"}"</code></pre>
+  -d "{\"blockHash\": \"...\", \"oldKey\": \"...\", \"newStage\": \"guardian\"}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
                 <pre><code>{
   "success": true,
   "blockHash": "...",
-  "lifecycleStage": "guardian",
-  "rotationNumber": 1,
-  "rotationsLeft": 4,
+  "newOwnerPublicKey": "...",
+  "newOwnerPrivateKey": "...",
   "newEncryptionKey": "..."
 }</code></pre>
-
-                <div class="note">
-                    <div class="note-title">Automatic Stage Calculation</div>
-                    The lifecycle stage is automatically determined based on rotation count:
-                    <ul style="margin-top: 10px; margin-left: 20px;">
-                        <li>Rotation 1: genesis → guardian (~age 5)</li>
-                        <li>Rotation 2: guardian → self (~age 18)</li>
-                        <li>Rotations 3-5: self → self (additional transitions)</li>
-                    </ul>
-                    Maximum 5 rotations allowed per identity.
-                </div>
             </div>
         </div>
 

@@ -79,14 +79,16 @@ async function runTests() {
         fatherName: 'Father Doe',
         motherName: 'Mother Doe'
       },
-      ownerPublicKey: 'temp-key',
-      signatures: ['sig1', 'sig2', 'sig3'] // Mock signatures
+      registrarPublicKey: 'mock-registrar-pubkey', // Mock - would be from config.json KeyRegistry in production
+      registrarSignature: 'mock-signature',
+      parentKeys: ['mock-father-pubkey', 'mock-mother-pubkey']
     };
     
     const regResult = await request('POST', '/register', registrationData);
     console.log('✓ Identity registered successfully');
     console.log('  Block Hash:', regResult.blockHash);
     console.log('  Owner Public Key (first 50 chars):', regResult.ownerPublicKey.substring(0, 50) + '...');
+    console.log('  Parent Keys Count:', registrationData.parentKeys.length);
     testsPassed++;
     console.log();
     
@@ -125,47 +127,52 @@ async function runTests() {
     
     const { tokenId, token, blockHash: tokenBlockHash } = tokenResult;
     
-    // Test 4: Zero-knowledge verification (age check)
-    console.log('Test 4: Zero-knowledge verification (checking if born before 2007-10-20)...');
+    // Test 4: Zero-knowledge verification (multiple conditions)
+    console.log('Test 4: Zero-knowledge verification (checking multiple conditions)...');
     const verifyData = {
       blockHash: tokenBlockHash,
       tokenId: tokenId,
-      field: 'dob',
-      condition: '<= 2007-10-20',
+      conditions: [
+        { field: 'dob', condition: '<= 2007-10-20' },
+        { field: 'bloodGroup', condition: '== O+' }
+      ],
       encryptionKey
     };
     
     const verifyResult = await request('POST', '/verify', verifyData);
     console.log('✓ Verification completed successfully');
-    console.log('  Result:', verifyResult.result);
-    console.log('  Interpretation: User born on 1990-05-15 is', verifyResult.result ? 'BEFORE 2007-10-20 (older than 18)' : 'AFTER 2007-10-20 (younger than 18)');
+    console.log('  Results:', JSON.stringify(verifyResult.results, null, 2));
+    console.log('  All Passed:', verifyResult.allPassed);
+    console.log('  Interpretation: User born on 1990-05-15 is', verifyResult.results[0].result ? 'BEFORE 2007-10-20 (older than 18)' : 'AFTER 2007-10-20');
+    console.log('  Interpretation: Blood group is', verifyResult.results[1].result ? 'O+' : 'NOT O+');
     
-    if (verifyResult.result === true) {
-      console.log('  ✓ Correct result (1990-05-15 is before 2007-10-20)');
+    if (verifyResult.allPassed === true && verifyResult.results[0].result === true && verifyResult.results[1].result === true) {
+      console.log('  ✓ Correct results for both conditions');
     } else {
-      console.log('  ✗ Incorrect result');
+      console.log('  ✗ Incorrect results');
       testsFailed++;
     }
     testsPassed++;
     console.log();
     
-    // Test 5: Another verification (blood group)
-    console.log('Test 5: Zero-knowledge verification (checking if bloodGroup == O+)...');
+    // Test 5: Another verification (name check)
+    console.log('Test 5: Zero-knowledge verification (checking if name == John Doe)...');
     const verify2Data = {
       blockHash: tokenBlockHash,
       tokenId: tokenId,
-      field: 'bloodGroup',
-      condition: '== O+',
+      conditions: [
+        { field: 'name', condition: '== John Doe' }
+      ],
       encryptionKey
     };
     
     const verify2Result = await request('POST', '/verify', verify2Data);
     console.log('✓ Verification completed successfully');
-    console.log('  Result:', verify2Result.result);
-    console.log('  Interpretation: Blood group is', verify2Result.result ? 'O+' : 'NOT O+');
+    console.log('  Result:', verify2Result.results[0].result);
+    console.log('  Interpretation: Name is', verify2Result.results[0].result ? 'John Doe' : 'NOT John Doe');
     
-    if (verify2Result.result === true) {
-      console.log('  ✓ Correct result (blood group is O+)');
+    if (verify2Result.results[0].result === true) {
+      console.log('  ✓ Correct result (name is John Doe)');
     } else {
       console.log('  ✗ Incorrect result');
       testsFailed++;
@@ -197,14 +204,15 @@ async function runTests() {
     const verify3Data = {
       blockHash: updateResult.blockHash,
       tokenId: tokenId,
-      field: 'name',
-      condition: '== John Doe',
+      conditions: [
+        { field: 'address', condition: '== 456 New Street, New City' }
+      ],
       encryptionKey
     };
     
     const verify3Result = await request('POST', '/verify', verify3Data);
     console.log('✓ Third verification completed');
-    console.log('  Result:', verify3Result.result);
+    console.log('  Result:', verify3Result.results[0].result);
     console.log('  Note: Token should have 2 uses remaining (started with 5, used 3 times)');
     testsPassed++;
     console.log();

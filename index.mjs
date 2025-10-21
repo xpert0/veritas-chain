@@ -204,27 +204,32 @@ function handleGetChain(req, res) {
 async function handleRegister(req, res) {
   const body = await readBody(req);
   
-  if (!body.data || !body.ownerPublicKey || !body.signatures) {
-    sendJSON(res, 400, { error: 'Missing required fields' });
+  if (!body.data || !body.registrarPublicKey || !body.registrarSignature || !body.parentKeys) {
+    sendJSON(res, 400, { error: 'Missing required fields: data, registrarPublicKey, registrarSignature, parentKeys' });
     return;
   }
   
-  // Verify required signatures
-  const requiredSigs = genesis.getRequiredSignatures('registration');
-  if (body.signatures.length < requiredSigs) {
+  // Verify registrar is authorized (from config.json KeyRegistry)
+  const consensusConfig = config.getConsensusConfig();
+  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(body.registrarPublicKey)) {
+    sendJSON(res, 403, { error: 'Registrar not authorized' });
+    return;
+  }
+  
+  // Validate parent keys (at least one parent required, both preferred)
+  if (!Array.isArray(body.parentKeys) || body.parentKeys.length === 0) {
     sendJSON(res, 400, { 
-      error: 'Insufficient signatures',
-      required: requiredSigs,
-      provided: body.signatures.length
+      error: 'At least one parent key required',
+      message: 'Provide array of parent keys (both parents preferred)'
     });
     return;
   }
   
-  // Generate encryption key from user's public key (simplified - in production use proper key derivation)
-  const encryptionKey = await crypto.generateAES256Key();
-  
-  // Generate keypair for signing (in production, user provides this)
+  // Generate keypair for newborn
   const ownerKeyPair = await crypto.generateEd25519KeyPair();
+  
+  // Generate encryption key
+  const encryptionKey = await crypto.generateAES256Key();
   
   // Create block
   const prevHash = chain.getChainLength() > 0 
@@ -251,7 +256,7 @@ async function handleRegister(req, res) {
   await storage.saveSnapshot();
   await network.broadcastNewBlock(newBlock);
   
-  logger.info('New identity registered', { hash: newBlock.hash });
+  logger.info('New identity registered', { hash: newBlock.hash, parents: body.parentKeys.length });
   
   sendJSON(res, 201, { 
     success: true,
@@ -268,8 +273,14 @@ async function handleRegister(req, res) {
 async function handleVerify(req, res) {
   const body = await readBody(req);
   
-  if (!body.blockHash || !body.tokenId || !body.field || !body.condition || !body.encryptionKey) {
-    sendJSON(res, 400, { error: 'Missing required fields' });
+  if (!body.blockHash || !body.tokenId || !body.conditions || !body.encryptionKey) {
+    sendJSON(res, 400, { error: 'Missing required fields: blockHash, tokenId, conditions, encryptionKey' });
+    return;
+  }
+  
+  // Validate conditions is an array
+  if (!Array.isArray(body.conditions) || body.conditions.length === 0) {
+    sendJSON(res, 400, { error: 'conditions must be a non-empty array' });
     return;
   }
   
@@ -283,25 +294,44 @@ async function handleVerify(req, res) {
   // Decode encryption key
   const encryptionKey = Buffer.from(body.encryptionKey, 'base64');
   
-  // Verify condition
-  const result = verification.verifyCondition(
-    targetBlock,
-    body.tokenId,
-    body.field,
-    body.condition,
-    encryptionKey
-  );
+  // Verify all conditions
+  const results = [];
+  for (const cond of body.conditions) {
+    if (!cond.field || !cond.condition) {
+      results.push({ error: 'Each condition must have field and condition properties' });
+      continue;
+    }
+    
+    const result = verification.verifyCondition(
+      targetBlock,
+      body.tokenId,
+      cond.field,
+      cond.condition,
+      encryptionKey
+    );
+    
+    results.push({
+      field: cond.field,
+      condition: cond.condition,
+      result: result.result,
+      error: result.error
+    });
+  }
   
-  // Update block with decremented token
+  // Update block with decremented token (only once for all conditions)
   await storage.saveSnapshot();
   
   logger.info('Zero-knowledge verification performed', { 
     blockHash: body.blockHash,
-    field: body.field,
-    result: result.result
+    conditionsCount: body.conditions.length,
+    allPassed: results.every(r => r.result === true)
   });
   
-  sendJSON(res, 200, result);
+  sendJSON(res, 200, { 
+    success: true,
+    results: results,
+    allPassed: results.every(r => r.result === true)
+  });
 }
 
 /**
@@ -420,8 +450,8 @@ async function handleUpdate(req, res) {
 async function handleRotate(req, res) {
   const body = await readBody(req);
   
-  if (!body.blockHash || !body.oldKey || !body.newStage) {
-    sendJSON(res, 400, { error: 'Missing required fields' });
+  if (!body.blockHash || !body.oldPrivateKey || !body.newPublicKey || !body.newPrivateKey || !body.oldEncryptionKey) {
+    sendJSON(res, 400, { error: 'Missing required fields: blockHash, oldPrivateKey, newPublicKey, newPrivateKey, oldEncryptionKey' });
     return;
   }
   
@@ -432,11 +462,42 @@ async function handleRotate(req, res) {
     return;
   }
   
-  // Decode old key
-  const oldKey = Buffer.from(body.oldKey, 'base64');
+  // Decode old encryption key
+  const oldKey = Buffer.from(body.oldEncryptionKey, 'base64');
   
-  // Generate new keypair
-  const newKeyPair = await crypto.generateEd25519KeyPair();
+  // Verify old private key matches current owner
+  const testData = 'test_signature_verification';
+  const testSig = crypto.signEd25519(testData, body.oldPrivateKey);
+  const oldPublicKey = targetBlock.metadata.ownerPubKey;
+  
+  if (!crypto.verifyEd25519(testData, testSig, oldPublicKey)) {
+    sendJSON(res, 403, { error: 'Old private key does not match block owner' });
+    return;
+  }
+  
+  // Calculate new lifecycle stage based on rotation count
+  const currentStage = targetBlock.metadata.lifecycleStage;
+  const rotationsLeft = targetBlock.metadata.rotationsLeft;
+  const totalRotations = config.getIdentityConfig().maxKeyRotations;
+  const rotationCount = totalRotations - rotationsLeft;
+  
+  let newStage = currentStage;
+  
+  // Determine new stage based on rotation count
+  // rotation 0: genesis (initial state)
+  // rotation 1: guardian (first rotation, ~age 5)
+  // rotation 2: self (second rotation, ~age 18)
+  // rotations 3-4: self (additional rotations while alive)
+  // rotation 5: would be expired/death
+  if (rotationCount === 0) {
+    newStage = 'guardian'; // genesis → guardian
+  } else if (rotationCount === 1) {
+    newStage = 'self'; // guardian → self
+  } else if (rotationCount >= 2) {
+    newStage = 'self'; // self → self (subsequent rotations)
+  }
+  
+  // Generate new encryption key
   const newKey = await crypto.generateAES256Key();
   
   // Rotate
@@ -444,9 +505,9 @@ async function handleRotate(req, res) {
     targetBlock,
     oldKey,
     newKey,
-    newKeyPair.publicKey,
-    newKeyPair.privateKey,
-    body.newStage
+    body.newPublicKey,
+    body.newPrivateKey,
+    newStage
   );
   
   // Update in chain
@@ -454,18 +515,21 @@ async function handleRotate(req, res) {
   
   // Save and broadcast
   await storage.saveSnapshot();
-  await network.broadcastKeyRotation(targetBlock.hash, body.newStage);
+  await network.broadcastKeyRotation(targetBlock.hash, newStage);
   
   logger.info('Key rotated', { 
     hash: targetBlock.hash,
-    newStage: body.newStage
+    rotationNumber: rotationCount + 1,
+    newStage: newStage,
+    rotationsLeft: targetBlock.metadata.rotationsLeft
   });
   
   sendJSON(res, 200, { 
     success: true,
     blockHash: targetBlock.hash,
-    newOwnerPublicKey: newKeyPair.publicKey,
-    newOwnerPrivateKey: newKeyPair.privateKey,
+    lifecycleStage: newStage,
+    rotationNumber: rotationCount + 1,
+    rotationsLeft: targetBlock.metadata.rotationsLeft,
     newEncryptionKey: newKey.toString('base64')
   });
 }
