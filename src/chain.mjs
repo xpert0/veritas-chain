@@ -7,6 +7,7 @@ import { isValidBlockStructure } from './utils.mjs';
 const chain = [];
 let chainHash = null;
 let chainSignature = null;
+const usedSignatures = new Set(); // Track one-use signatures for replay protection
 
 /**
  * Initialize chain with genesis block
@@ -367,6 +368,44 @@ export function getChainMetadata() {
   };
 }
 
+/**
+ * Check if signature has been used (replay protection)
+ * @param {string} signature - Signature to check
+ * @returns {boolean} True if signature has been used
+ */
+export function isSignatureUsed(signature) {
+  return usedSignatures.has(signature);
+}
+
+/**
+ * Mark signature as used (replay protection)
+ * @param {string} signature - Signature to mark as used
+ */
+export function markSignatureUsed(signature) {
+  usedSignatures.add(signature);
+}
+
+/**
+ * Check if multiple signatures have been used
+ * @param {Array<string>} signatures - Array of signatures to check
+ * @returns {Object} Result with used signatures
+ */
+export function checkSignaturesUsed(signatures) {
+  const used = signatures.filter(sig => usedSignatures.has(sig));
+  return {
+    hasUsed: used.length > 0,
+    usedSignatures: used
+  };
+}
+
+/**
+ * Mark multiple signatures as used
+ * @param {Array<string>} signatures - Array of signatures to mark
+ */
+export function markSignaturesUsed(signatures) {
+  signatures.forEach(sig => usedSignatures.add(sig));
+}
+
 export default {
   initializeChain,
   getChain,
@@ -382,5 +421,9 @@ export default {
   verifyChainIntegrity,
   pruneExpiredBlocks,
   replaceChain,
-  getChainMetadata
+  getChainMetadata,
+  isSignatureUsed,
+  markSignatureUsed,
+  checkSignaturesUsed,
+  markSignaturesUsed
 };
