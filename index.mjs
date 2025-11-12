@@ -204,18 +204,25 @@ function handleGetChain(req, res) {
 async function handleRegister(req, res) {
   const body = await readBody(req);
   
-  if (!body.data || !body.registrarPrivateKey || !body.registrarSignature || !body.parentKeys) {
-    sendJSON(res, 400, { error: 'Missing required fields: data, registrarPrivateKey, registrarSignature, parentKeys' });
+  if (!body.data || !body.registrarSignatures || !body.parentKeys) {
+    sendJSON(res, 400, { error: 'Missing required fields: data, registrarSignatures (array), parentKeys' });
     return;
   }
   
-  // Calculate public key from private key
-  const registrarPublicKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  // Validate registrarSignatures is an array
+  if (!Array.isArray(body.registrarSignatures)) {
+    sendJSON(res, 400, { error: 'registrarSignatures must be an array' });
+    return;
+  }
   
-  // Verify registrar is authorized (from config.json KeyRegistry)
+  // Get required number of signatures from config
   const consensusConfig = config.getConsensusConfig();
-  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
-    sendJSON(res, 403, { error: 'Registrar not authorized' });
+  const requiredSigs = consensusConfig.requiredSignatures.registration;
+  
+  if (body.registrarSignatures.length < requiredSigs) {
+    sendJSON(res, 403, { 
+      error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${body.registrarSignatures.length}`
+    });
     return;
   }
   
@@ -226,6 +233,41 @@ async function handleRegister(req, res) {
       message: 'Provide array of parent keys (both parents preferred)'
     });
     return;
+  }
+  
+  // Verify all signatures against the data being registered
+  const message = JSON.stringify(body.data);
+  const validatedRegistrars = new Set();
+  
+  for (const sig of body.registrarSignatures) {
+    if (!sig.signature || !sig.registrarPrivateKey) {
+      sendJSON(res, 400, { error: 'Each signature must include signature and registrarPrivateKey' });
+      return;
+    }
+    
+    // Derive public key from private key
+    const registrarPublicKey = crypto.derivePublicKeyFromPrivate(sig.registrarPrivateKey);
+    
+    // Verify registrar is in KeyRegistry
+    if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
+      sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
+      return;
+    }
+    
+    // Prevent duplicate registrars
+    if (validatedRegistrars.has(registrarPublicKey)) {
+      sendJSON(res, 400, { error: 'Duplicate registrar signatures detected' });
+      return;
+    }
+    
+    // Verify signature of the data
+    const isValid = crypto.verifyEd25519Signature(message, sig.signature, registrarPublicKey);
+    if (!isValid) {
+      sendJSON(res, 401, { error: `Invalid signature from registrar: ${registrarPublicKey}` });
+      return;
+    }
+    
+    validatedRegistrars.add(registrarPublicKey);
   }
   
   // Generate keypair for newborn
@@ -259,7 +301,7 @@ async function handleRegister(req, res) {
   await storage.saveSnapshot();
   await network.broadcastNewBlock(newBlock);
   
-  logger.info('New identity registered', { hash: newBlock.hash, parents: body.parentKeys.length });
+  logger.info('New identity registered', { hash: newBlock.hash, parents: body.parentKeys.length, registrars: validatedRegistrars.size });
   
   sendJSON(res, 201, { 
     success: true,
