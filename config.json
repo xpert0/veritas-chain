@@ -29,6 +29,7 @@
     ],
     "requiredSignatures": {
       "registration": 2,
+      "keyregistration": 3,
       "update": 3
     }
   },
