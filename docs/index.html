@@ -206,54 +206,95 @@
 
         <div class="section">
             <h2>Keypair Generation and Signing</h2>
-            <p>Before using the API endpoints that require signatures, you need to understand how to generate Ed25519 keypairs and create signatures.</p>
+            <p>Before using the API endpoints that require signatures, you need to understand how to generate Ed25519 keypairs and create signatures using OpenSSL.</p>
             
             <h3>Generating Ed25519 Keypairs</h3>
-            <p>Use Node.js crypto module to generate secure Ed25519 keypairs:</p>
-            <pre><code>import crypto from 'crypto';
-import { promisify } from 'util';
+            <p>Use OpenSSL to generate secure Ed25519 keypairs:</p>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="showTab(event, 'keygen-linux')">Linux/Mac</div>
+                <div class="tab" onclick="showTab(event, 'keygen-windows')">Windows</div>
+            </div>
+            
+            <div id="keygen-linux" class="tab-content active">
+                <pre><code># Generate private key
+openssl genpkey -algorithm Ed25519 -out registrar_private.pem
 
-const generateKeyPair = promisify(crypto.generateKeyPair);
+# Extract public key from private key
+openssl pkey -in registrar_private.pem -pubout -out registrar_public.pem
 
-// Generate a new Ed25519 keypair
-const { publicKey, privateKey } = await generateKeyPair('ed25519', {
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-});
+# View the keys
+cat registrar_private.pem
+cat registrar_public.pem</code></pre>
+            </div>
+            
+            <div id="keygen-windows" class="tab-content">
+                <pre><code># Generate private key
+openssl.exe genpkey -algorithm Ed25519 -out registrar_private.pem
 
-console.log('Public Key:\n', publicKey);
-console.log('Private Key:\n', privateKey);</code></pre>
+# Extract public key from private key
+openssl.exe pkey -in registrar_private.pem -pubout -out registrar_public.pem
+
+# View the keys
+type registrar_private.pem
+type registrar_public.pem</code></pre>
+            </div>
 
             <h3>Creating Signatures</h3>
-            <p>Signatures are created by signing specific data with a registrar's private key:</p>
-            <pre><code>import crypto from 'crypto';
+            <p>Signatures are created by signing specific data with a registrar's private key. First, prepare the data to sign, then create the signature:</p>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="showTab(event, 'sign-linux')">Linux/Mac</div>
+                <div class="tab" onclick="showTab(event, 'sign-windows')">Windows</div>
+            </div>
+            
+            <div id="sign-linux" class="tab-content active">
+                <pre><code># For registration: Create data file (exact JSON format matters)
+echo -n '{"name":"John Doe","dob":"1990-05-15","address":"123 Main St"}' > data.txt
 
-// For registration: sign the data object
-const data = {
-  name: "John Doe",
-  dob: "1990-05-15",
-  address: "123 Main St"
-};
-const dataString = JSON.stringify(data);
+# Sign the data with registrar's private key
+openssl pkeyutl -sign -inkey registrar_private.pem -out signature.bin -rawin -in data.txt
 
-// Sign with registrar's private key
-const signature = crypto.sign(null, Buffer.from(dataString), registrarPrivateKey);
-const signatureBase64 = signature.toString('base64');
+# Convert signature to base64 for API use
+base64 -w 0 signature.bin > signature.b64
+cat signature.b64</code></pre>
+            </div>
+            
+            <div id="sign-windows" class="tab-content">
+                <pre><code># For registration: Create data file (exact JSON format matters)
+echo|set /p="{"name":"John Doe","dob":"1990-05-15","address":"123 Main St"}" > data.txt
 
-console.log('Signature:', signatureBase64);</code></pre>
+# Sign the data with registrar's private key
+openssl.exe pkeyutl -sign -inkey registrar_private.pem -out signature.bin -rawin -in data.txt
+
+# Convert signature to base64 for API use
+certutil -encode signature.bin signature.b64
+# Note: certutil adds header/footer, extract only the base64 content</code></pre>
+            </div>
 
             <h3>Verifying Signatures</h3>
-            <p>Signatures can be verified using the public key:</p>
-            <pre><code>import crypto from 'crypto';
+            <p>Signatures can be verified using the public key (the API does this automatically):</p>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="showTab(event, 'verify-linux')">Linux/Mac</div>
+                <div class="tab" onclick="showTab(event, 'verify-windows')">Windows</div>
+            </div>
+            
+            <div id="verify-linux" class="tab-content active">
+                <pre><code># Verify signature (base64 signature must be decoded first)
+base64 -d signature.b64 > signature_decoded.bin
+openssl pkeyutl -verify -pubin -inkey registrar_public.pem -rawin -in data.txt -sigfile signature_decoded.bin
 
-const isValid = crypto.verify(
-  null,
-  Buffer.from(dataString),
-  registrarPublicKey,
-  Buffer.from(signatureBase64, 'base64')
-);
+# Output: "Signature Verified Successfully" or error</code></pre>
+            </div>
+            
+            <div id="verify-windows" class="tab-content">
+                <pre><code># Verify signature (base64 signature must be decoded first)
+certutil -decode signature.b64 signature_decoded.bin
+openssl.exe pkeyutl -verify -pubin -inkey registrar_public.pem -rawin -in data.txt -sigfile signature_decoded.bin
 
-console.log('Signature valid:', isValid);</code></pre>
+# Output: "Signature Verified Successfully" or error</code></pre>
+            </div>
 
             <div class="note">
                 <div class="note-title">Important: Signatures Must Be From Other Registrars</div>
