@@ -74,26 +74,48 @@ async function bootstrap() {
     } else if (hasPeers) {
       // No local chain but peers exist - sync from network
       logger.info('No local chain, syncing from network peer with longest chain');
-      logger.info('Getting chain from peer', { peer: bestPeer.address, chainLength: bestPeer.chainLength });
+      logger.info('Getting chain from peer', { 
+        peer: bestPeer.address, 
+        chainLength: bestPeer.chainLength,
+        chainId: bestPeer.chainId 
+      });
       
-      const syncSuccess = await sync.syncWithPeer(bestPeer.address, 0);
+      // First, get the sync data to extract genesis block
+      const syncData = await sync.requestSync(bestPeer.address, 0);
       
-      if (syncSuccess) {
-        // Save the synced chain
-        const syncedChain = chain.getChain();
-        const genesisBlock = syncedChain[0];
+      if (syncData && syncData.blocks && syncData.blocks.length > 0) {
+        // Extract and set genesis block first
+        const genesisBlock = syncData.blocks[0];
         
-        // We don't have the master key, but we have the chain
+        if (!genesis.verifyGenesisBlock(genesisBlock)) {
+          throw new Error('Invalid genesis block received from peer');
+        }
+        
+        // Set genesis block to enable chain operations
         genesis.setGenesisBlock(genesisBlock);
-        await storage.saveGenesis(genesisBlock);
-        await storage.saveSnapshot();
+        chain.initializeChain(genesisBlock);
         
-        logger.info('Chain synced from network', { 
-          chainId: genesisBlock.chainId, 
-          blocks: syncedChain.length 
+        logger.info('Genesis block received from network', { 
+          chainId: genesisBlock.chainId 
         });
+        
+        // Now apply the full sync data (including all blocks)
+        const syncSuccess = await sync.applySyncData(syncData);
+        
+        if (syncSuccess) {
+          // Save the synced chain
+          await storage.saveGenesis(genesisBlock);
+          await storage.saveSnapshot();
+          
+          logger.info('Chain synced from network', { 
+            chainId: genesisBlock.chainId, 
+            blocks: chain.getChainLength() 
+          });
+        } else {
+          throw new Error('Failed to apply synced chain data');
+        }
       } else {
-        throw new Error('Failed to sync chain from network');
+        throw new Error('No valid chain data received from peer');
       }
     } else {
       // No peers and no local chain - create new chain (first peer)

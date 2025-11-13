@@ -81,7 +81,9 @@ export async function createGenesisBlock() {
   
   const template = deepClone(getGenesisTemplate());
   
-  const chainId = crypto.sha512(`genesis-${Date.now()}-${Math.random()}`);
+  // Generate chainId deterministically from master public key
+  // This ensures all peers using the same master key create the same chain
+  const chainId = crypto.sha512(masterKeyPair.publicKey);
   
   genesisBlock = {
     ...template,

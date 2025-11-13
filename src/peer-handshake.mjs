@@ -123,8 +123,9 @@ export function validateHandshakeResponse(response) {
   
   const genesisBlock = genesis.getGenesisBlock();
   
-  // Check if same chain
-  if (response.chainId && genesisBlock && response.chainId !== genesisBlock.chainId) {
+  // Check if same chain (only if we have a genesis block)
+  // If we don't have a genesis block yet, allow handshake for initial sync
+  if (genesisBlock && response.chainId && response.chainId !== genesisBlock.chainId) {
     return { valid: false, reason: 'Different chain ID' };
   }
   
@@ -192,7 +193,8 @@ export async function performHandshake(peerAddress, peerId, p2pPort = null) {
       response,
       needsSync: validation.needsSync,
       peerChainLength: validation.peerChainLength,
-      peerLastUpdated: validation.peerLastUpdated
+      peerLastUpdated: validation.peerLastUpdated,
+      peerChainId: response.chainId
     };
   } catch (error) {
     logger.warn('Handshake failed', { 
