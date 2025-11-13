@@ -23,29 +23,31 @@ let httpServer = null;
  */
 async function bootstrap() {
   logger.info('===== ZKIC Bootstrap Starting =====');
-  
   try {
-    // Step 1: Load configuration
     logger.info('[1/9] Loading configuration...');
     await config.loadConfig();
-    
-    // Step 2: Initialize storage and acquire lock
     logger.info('[2/9] Initializing storage...');
     await storage.initStorage();
-    
-    // Step 3: Load existing data or create new
-    logger.info('[3/9] Loading chain data...');
     const data = await storage.loadAll();
+<<<<<<< HEAD
+    logger.info('[3/9] Initializing network...');
+    await network.initNetwork();
+    logger.info('[4/9] Discovering peers...');
+    await network.discoverAndConnect();
+    logger.info('[5/9] Starting P2P mesh...');
+    await network.startMesh();
+    logger.info('[6/9] Loading chain data...');
+    // const data = await storage.loadAll();
+=======
     
     let chainInitialized = false;
     
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
     if (data.genesis && data.masterKey) {
-      // Load existing chain
       logger.info('Existing chain found, loading...');
       genesis.setMasterKeyPair(data.masterKey);
       genesis.setGenesisBlock(data.genesis);
       chain.initializeChain(data.genesis);
-      
       if (data.snapshot && data.snapshot.chain) {
         chain.replaceChain(
           data.snapshot.chain,
@@ -54,6 +56,19 @@ async function bootstrap() {
         );
         logger.info('Chain snapshot loaded', { blocks: data.snapshot.chain.length });
       }
+<<<<<<< HEAD
+    } else {
+      logger.info('No existing chain, creating new genesis...');
+      logger.info('Loading master key from master_key.json...');
+      const masterKey = await genesis.loadMasterKeyFromFile();
+      const genesisBlock = await genesis.createGenesisBlock();
+      chain.initializeChain(genesisBlock);
+      await storage.saveMasterKey(masterKey);
+      await storage.saveGenesis(genesisBlock);
+      await storage.saveSnapshot(); 
+      logger.info('New chain created', { chainId: genesisBlock.chainId });
+    }
+=======
       
       chainInitialized = true;
     }
@@ -112,12 +127,18 @@ async function bootstrap() {
     }
     
     // Step 7: Verify chain integrity
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
     logger.info('[7/9] Verifying chain integrity...');
     const isValid = chain.verifyChainIntegrity();
     if (!isValid) {
       throw new Error('Chain integrity check failed');
     }
     logger.info('Chain integrity verified');
+<<<<<<< HEAD
+    logger.info('[8/9] Starting automatic snapshots...');
+    storage.startAutoSnapshot();
+    logger.info('[9/9] Starting HTTP API server...');
+=======
     
     // Step 8: Start full mesh
     logger.info('[8/9] Starting P2P mesh...');
@@ -129,11 +150,10 @@ async function bootstrap() {
     
     // Step 10: Start HTTP server
     logger.info('[10/10] Starting HTTP API server...');
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
     await startHTTPServer();
-    
     logger.info('===== ZKIC Bootstrap Complete =====');
     logger.info('Node is ready', network.getNetworkStatus());
-    
   } catch (error) {
     logger.error('Bootstrap failed', error);
     await shutdown();
@@ -146,21 +166,16 @@ async function bootstrap() {
  */
 async function startHTTPServer() {
   const cfg = config.getNetworkConfig();
-  
   httpServer = http.createServer(async (req, res) => {
-    // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
       res.end();
       return;
     }
-    
     const url = new URL(req.url, `http://${req.headers.host}`);
-    
     try {
       await handleRequest(req, res, url);
     } catch (error) {
@@ -168,7 +183,6 @@ async function startHTTPServer() {
       sendJSON(res, 500, { error: 'Internal server error', message: error.message });
     }
   });
-  
   return new Promise((resolve) => {
     httpServer.listen(cfg.httpPort, () => {
       logger.info('HTTP server started', { port: cfg.httpPort });
@@ -182,7 +196,6 @@ async function startHTTPServer() {
  */
 async function handleRequest(req, res, url) {
   const path = url.pathname;
-  
   if (req.method === 'GET' && path === '/docs') {
     handleDocs(req, res);
   } else if (req.method === 'GET' && path === '/api/chain') {
@@ -224,7 +237,6 @@ async function handleDocs(req, res) {
 function handleGetChain(req, res) {
   const metadata = chain.getChainMetadata();
   const networkStatus = network.getNetworkStatus();
-  
   sendJSON(res, 200, {
     chain: metadata,
     network: networkStatus,
@@ -237,6 +249,13 @@ function handleGetChain(req, res) {
  */
 async function handleRegister(req, res) {
   const body = await readBody(req);
+<<<<<<< HEAD
+  if (!body.data || !body.registrarPrivateKey || !body.registrarSignature || !body.parentKeys) {
+    sendJSON(res, 400, { error: 'Missing required fields: data, registrarPrivateKey, registrarSignature, parentKeys' });
+    return;
+  }
+  const registrarPublicKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+=======
   
   if (!body.data || !body.registrarSignatures || !body.parentKeys) {
     sendJSON(res, 400, { error: 'Missing required fields: data, registrarSignatures (array), parentKeys' });
@@ -250,6 +269,7 @@ async function handleRegister(req, res) {
   }
   
   // Get required number of signatures from config
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
   const consensusConfig = config.getConsensusConfig();
   const requiredSigs = consensusConfig.requiredSignatures.registration;
   
@@ -259,8 +279,6 @@ async function handleRegister(req, res) {
     });
     return;
   }
-  
-  // Validate parent keys (at least one parent required, both preferred)
   if (!Array.isArray(body.parentKeys) || body.parentKeys.length === 0) {
     sendJSON(res, 400, { 
       error: 'At least one parent key required',
@@ -268,6 +286,8 @@ async function handleRegister(req, res) {
     });
     return;
   }
+<<<<<<< HEAD
+=======
   
   // Verify all signatures against the data being registered
   const message = JSON.stringify(body.data);
@@ -305,16 +325,12 @@ async function handleRegister(req, res) {
   }
   
   // Generate keypair for newborn
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
   const ownerKeyPair = await crypto.generateEd25519KeyPair();
-  
-  // Generate encryption key
   const encryptionKey = await crypto.generateAES256Key();
-  
-  // Create block
   const prevHash = chain.getChainLength() > 0 
     ? chain.getChain()[chain.getChainLength() - 1].hash 
     : null;
-  
   const newBlock = await block.createBlock(
     body.data,
     ownerKeyPair.publicKey,
@@ -322,21 +338,20 @@ async function handleRegister(req, res) {
     ownerKeyPair.privateKey,
     prevHash
   );
-  
-  // Add to chain
   const added = chain.addBlock(newBlock);
-  
   if (!added) {
     sendJSON(res, 500, { error: 'Failed to add block to chain' });
     return;
   }
-  
-  // Save and broadcast
   await storage.saveSnapshot();
   await network.broadcastNewBlock(newBlock);
+<<<<<<< HEAD
+  logger.info('New identity registered', { hash: newBlock.hash, parents: body.parentKeys.length });
+=======
   
   logger.info('New identity registered', { hash: newBlock.hash, parents: body.parentKeys.length, registrars: validatedRegistrars.size });
   
+>>>>>>> 0603e4b348fb99821ce54469ab83685f77c98cef
   sendJSON(res, 201, { 
     success: true,
     blockHash: newBlock.hash,
@@ -351,37 +366,26 @@ async function handleRegister(req, res) {
  */
 async function handleVerify(req, res) {
   const body = await readBody(req);
-  
   if (!body.blockHash || !body.tokenId || !body.conditions || !body.encryptionKey) {
     sendJSON(res, 400, { error: 'Missing required fields: blockHash, tokenId, conditions, encryptionKey' });
     return;
   }
-  
-  // Validate conditions is an array
   if (!Array.isArray(body.conditions) || body.conditions.length === 0) {
     sendJSON(res, 400, { error: 'conditions must be a non-empty array' });
     return;
   }
-  
-  // Find block
   const targetBlock = chain.findBlockByHash(body.blockHash);
   if (!targetBlock) {
     sendJSON(res, 404, { error: 'Block not found' });
     return;
   }
-  
-  // Decode encryption key
   const encryptionKey = Buffer.from(body.encryptionKey, 'base64');
-  
-  // Use verifyMultipleConditions which checks all permissions first
   const verificationResult = verification.verifyMultipleConditions(
     targetBlock,
     body.tokenId,
     body.conditions,
     encryptionKey
   );
-  
-  // If unauthorized fields detected, return early with 403
   if (verificationResult.unauthorizedFields) {
     sendJSON(res, 403, { 
       success: false,
@@ -390,16 +394,12 @@ async function handleVerify(req, res) {
     });
     return;
   }
-  
-  // Update block with decremented token (only once for all conditions)
   await storage.saveSnapshot();
-  
   logger.info('Zero-knowledge verification performed', { 
     blockHash: body.blockHash,
     conditionsCount: body.conditions.length,
     allPassed: verificationResult.result
   });
-  
   sendJSON(res, 200, { 
     success: true,
     results: verificationResult.details,
@@ -412,13 +412,10 @@ async function handleVerify(req, res) {
  */
 async function handleIssueToken(req, res) {
   const body = await readBody(req);
-  
   if (!body.blockHash || !body.ownerPrivateKey || !body.permissions || !body.maxUses) {
     sendJSON(res, 400, { error: 'Missing required fields' });
     return;
   }
-  
-  // Enforce max value of 5 for maxUses
   if (body.maxUses > 5 || body.maxUses < 1) {
     sendJSON(res, 400, { 
       error: 'Invalid maxUses value',
@@ -426,28 +423,18 @@ async function handleIssueToken(req, res) {
     });
     return;
   }
-  
-  // Find block
   const targetBlock = chain.findBlockByHash(body.blockHash);
   if (!targetBlock) {
     sendJSON(res, 404, { error: 'Block not found' });
     return;
   }
-  
-  // Issue token (returns {id, token})
   const { id: tokenId, token: tokenData } = await token.issueToken(
     body.ownerPrivateKey,
     body.permissions,
     body.maxUses
   );
-  
-  // Add token to block (tokenId as parent key, tokenData without id)
   token.addToken(targetBlock.tokens, tokenId, tokenData);
-  
-  // Recalculate block hash
   targetBlock.hash = block.calculateBlockHash(targetBlock);
-  
-  // Re-sign the block
   const blockData = JSON.stringify({
     hash: targetBlock.hash,
     encryptedData: targetBlock.encryptedData,
@@ -455,20 +442,14 @@ async function handleIssueToken(req, res) {
     prevHash: targetBlock.prevHash
   });
   targetBlock.signature = crypto.signEd25519(blockData, body.ownerPrivateKey);
-  
-  // Update chain
   chain.updateBlockInChain(body.blockHash, targetBlock);
-  
-  // Save
   await storage.saveSnapshot();
-  
   logger.info('Token issued', { 
     oldBlockHash: body.blockHash,
     newBlockHash: targetBlock.hash,
     tokenId: tokenId,
     maxUses: body.maxUses
   });
-  
   sendJSON(res, 201, { 
     success: true,
     blockHash: targetBlock.hash,
@@ -482,13 +463,10 @@ async function handleIssueToken(req, res) {
  */
 async function handleUpdate(req, res) {
   const body = await readBody(req);
-  
   if (!body.blockHash || !body.newData || !body.encryptionKey || !body.ownerPrivateKey || !body.signatures) {
     sendJSON(res, 400, { error: 'Missing required fields' });
     return;
   }
-  
-  // Verify required signatures
   const requiredSigs = genesis.getRequiredSignatures('update');
   if (body.signatures.length < requiredSigs) {
     sendJSON(res, 400, { 
@@ -498,29 +476,17 @@ async function handleUpdate(req, res) {
     });
     return;
   }
-  
-  // Find block
   const targetBlock = chain.findBlockByHash(body.blockHash);
   if (!targetBlock) {
     sendJSON(res, 404, { error: 'Block not found' });
     return;
   }
-  
-  // Decode encryption key
   const encryptionKey = Buffer.from(body.encryptionKey, 'base64');
-  
-  // Update block
   block.updateBlock(targetBlock, body.newData, encryptionKey, body.ownerPrivateKey);
-  
-  // Update in chain
   chain.updateBlockInChain(body.blockHash, targetBlock);
-  
-  // Save and broadcast
   await storage.saveSnapshot();
   await network.broadcastBlockUpdate(targetBlock);
-  
   logger.info('Block updated', { hash: targetBlock.hash });
-  
   sendJSON(res, 200, { 
     success: true,
     blockHash: targetBlock.hash
@@ -532,27 +498,19 @@ async function handleUpdate(req, res) {
  */
 async function handleRotate(req, res) {
   const body = await readBody(req);
-  
   if (!body.blockHash || !body.oldPrivateKey || !body.newPrivateKey || !body.oldEncryptionKey) {
     sendJSON(res, 400, { error: 'Missing required fields: blockHash, oldPrivateKey, newPrivateKey, oldEncryptionKey' });
     return;
   }
-  
-  // Find block
   const targetBlock = chain.findBlockByHash(body.blockHash);
   if (!targetBlock) {
     sendJSON(res, 404, { error: 'Block not found' });
     return;
   }
-  
-  // Decode old encryption key
   const oldKey = Buffer.from(body.oldEncryptionKey, 'base64');
-  
-  // Verify old private key matches current owner
   const testData = 'test_signature_verification';
   const testSig = crypto.signEd25519(testData, body.oldPrivateKey);
   const oldPublicKey = targetBlock.metadata.ownerPubKey;
-  
   if (!crypto.verifyEd25519(testData, testSig, oldPublicKey)) {
     sendJSON(res, 403, { 
       success: false,
@@ -560,36 +518,20 @@ async function handleRotate(req, res) {
     });
     return;
   }
-  
-  // Calculate new public key from new private key
   const newPublicKey = crypto.derivePublicKeyFromPrivate(body.newPrivateKey);
-  
-  // Calculate new lifecycle stage based on rotation count
   const currentStage = targetBlock.metadata.lifecycleStage;
   const rotationsLeft = targetBlock.metadata.rotationsLeft;
   const totalRotations = config.getIdentityConfig().maxKeyRotations;
   const rotationCount = totalRotations - rotationsLeft;
-  
   let newStage = currentStage;
-  
-  // Determine new stage based on rotation count
-  // rotation 0: genesis (initial state)
-  // rotation 1: guardian (first rotation, ~age 5)
-  // rotation 2: self (second rotation, ~age 18)
-  // rotations 3-4: self (additional rotations while alive)
-  // rotation 5: would be expired/death
   if (rotationCount === 0) {
-    newStage = 'guardian'; // genesis → guardian
+    newStage = 'guardian';
   } else if (rotationCount === 1) {
-    newStage = 'self'; // guardian → self
+    newStage = 'self';
   } else if (rotationCount >= 2) {
-    newStage = 'self'; // self → self (subsequent rotations)
+    newStage = 'self';
   }
-  
-  // Generate new encryption key
   const newKey = await crypto.generateAES256Key();
-  
-  // Rotate
   block.rotateBlockKey(
     targetBlock,
     oldKey,
@@ -598,21 +540,15 @@ async function handleRotate(req, res) {
     body.newPrivateKey,
     newStage
   );
-  
-  // Update in chain
   chain.updateBlockInChain(body.blockHash, targetBlock);
-  
-  // Save and broadcast
   await storage.saveSnapshot();
   await network.broadcastKeyRotation(targetBlock.hash, newStage);
-  
   logger.info('Key rotated', { 
     hash: targetBlock.hash,
     rotationNumber: rotationCount + 1,
     newStage: newStage,
     rotationsLeft: targetBlock.metadata.rotationsLeft
   });
-  
   sendJSON(res, 200, { 
     success: true,
     blockHash: targetBlock.hash,
@@ -655,51 +591,36 @@ function sendJSON(res, statusCode, data) {
  */
 async function shutdown() {
   logger.info('Shutting down...');
-  
   try {
-    // Stop network
     network.stopNetwork();
-    
-    // Save final snapshot
     await storage.saveSnapshot();
-    
-    // Stop automatic snapshots
     storage.stopAutoSnapshot();
-    
-    // Close HTTP server
     if (httpServer) {
       httpServer.close(() => {
         logger.info('HTTP server closed');
       });
     }
-    
     logger.info('Shutdown complete');
   } catch (error) {
     logger.error('Shutdown error', error);
   }
 }
-
-// Handle process signals
 process.on('SIGINT', async () => {
   logger.info('SIGINT received');
   await shutdown();
   process.exit(0);
 });
-
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received');
   await shutdown();
   process.exit(0);
 });
-
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught exception', error);
   shutdown().then(() => process.exit(1));
 });
-
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled rejection', reason);
 });
 
-// Start the node
 bootstrap();

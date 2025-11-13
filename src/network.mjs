@@ -20,9 +20,7 @@ let gossipInterval = null;
  * @returns {Promise<void>}
  */
 export async function initNetwork() {
-  // Generate peer ID
   peerId = `peer-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  
   logger.info('Network initialized', { peerId });
 }
 
@@ -32,20 +30,14 @@ export async function initNetwork() {
  */
 export async function startP2PServer() {
   const config = getNetworkConfig();
-  
   p2pServer = net.createServer((socket) => {
     let dataBuffer = '';
-    
     socket.on('data', async (data) => {
       dataBuffer += data.toString();
-      
-      // Process complete messages (ending with \n)
       const messages = dataBuffer.split('\n');
-      dataBuffer = messages.pop(); // Keep incomplete message
-      
+      dataBuffer = messages.pop();
       for (const messageStr of messages) {
         if (!messageStr.trim()) continue;
-        
         try {
           const message = JSON.parse(messageStr);
           await handleIncomingMessage(message, socket);
@@ -54,22 +46,18 @@ export async function startP2PServer() {
         }
       }
     });
-    
     socket.on('error', (error) => {
       logger.debug('Socket error', error.message);
     });
-    
     socket.on('close', () => {
       logger.debug('Socket closed');
     });
   });
-  
   return new Promise((resolve, reject) => {
     p2pServer.listen(config.p2pPort, () => {
       logger.info('P2P server started', { port: config.p2pPort });
       resolve();
     });
-    
     p2pServer.on('error', (error) => {
       logger.error('P2P server error', error.message);
       reject(error);
@@ -99,13 +87,11 @@ async function handleIncomingMessage(message, socket) {
     case 'GOSSIP':
       const gossipAction = gossip.handleGossip(message, socket.remoteAddress);
       if (gossipAction.action === 'sync') {
-        // Trigger sync in background
         sync.syncWithPeer(gossipAction.peerAddress).catch(err =>
           logger.error('Auto-sync failed', err.message)
         );
       }
       break;
-      
     case 'NEW_BLOCK':
     case 'UPDATE_BLOCK':
     case 'ROTATE_KEY':
@@ -132,24 +118,19 @@ async function processEventAction(eventResult) {
     case 'add_block':
       chain.addBlock(eventResult.data);
       break;
-      
     case 'update_block':
       const block = eventResult.data;
       chain.updateBlockInChain(block.hash, block);
       break;
-      
     case 'prune_block':
       chain.removeBlock(eventResult.data.blockHash);
       break;
-      
     case 'chain_state':
-      // Check if we need to sync
       const metadata = chain.getChainMetadata();
-      if (eventResult.data.chainLength > metadata.length) {
+      if (eventResult.data.chainLength >= metadata.length) {
         logger.info('Detected longer chain, syncing...');
       }
       break;
-      
     default:
       logger.debug('Event action processed', { action: eventResult.action });
   }
@@ -161,19 +142,12 @@ async function processEventAction(eventResult) {
  */
 export async function discoverAndConnect() {
   logger.info('Starting peer discovery and connection');
-  
-  // Discover peers
   const peers = await discovery.discoverPeers();
-  
   if (peers.length === 0) {
     logger.warn('No peers discovered');
     return;
   }
-  
-  // Handshake with peers
   const handshakeResults = await handshake.handshakeWithPeers(peers, peerId);
-  
-  // Filter successful handshakes
   const connectedPeers = handshakeResults
     .filter(r => r.success)
     .map(r => ({
@@ -182,15 +156,9 @@ export async function discoverAndConnect() {
       lastUpdated: r.peerLastUpdated,
       needsSync: r.needsSync
     }));
-  
   activePeers = connectedPeers.map(p => p.address);
-  
-  // Update gossip peer list
   gossip.updatePeerList(activePeers);
-  
   logger.info('Connected to peers', { count: activePeers.length });
-  
-  // Sync if needed
   const peersNeedingSync = connectedPeers.filter(p => p.needsSync);
   if (peersNeedingSync.length > 0) {
     await sync.syncWithBestPeer(peersNeedingSync);
@@ -202,17 +170,10 @@ export async function discoverAndConnect() {
  * @returns {Promise<void>}
  */
 export async function startMesh() {
-  // Start P2P server
   await startP2PServer();
-  
-  // Discover and connect to peers
   await discoverAndConnect();
-  
-  // Start periodic discovery
-  discoveryInterval = discovery.startPeriodicDiscovery(300); // Every 5 minutes
-  
-  // Start gossip
-  gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
+  discoveryInterval = discovery.startPeriodicDiscovery(30);
+  gossipInterval = gossip.startGossip(activePeers, 30);
   
   logger.info('Full mesh networking started');
 }
@@ -221,23 +182,17 @@ export async function startMesh() {
  * Stop networking
  */
 export function stopNetwork() {
-  // Stop gossip
   gossip.stopGossip();
-  
-  // Stop discovery
   if (discoveryInterval) {
     clearInterval(discoveryInterval);
     discoveryInterval = null;
   }
-  
-  // Close P2P server
   if (p2pServer) {
     p2pServer.close(() => {
       logger.info('P2P server stopped');
     });
     p2pServer = null;
   }
-  
   logger.info('Network stopped');
 }
 

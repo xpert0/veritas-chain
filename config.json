@@ -24,6 +24,7 @@
     "mode": "APoC",
     "KeyRegistry": [
       "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANpCGY1tLCSCTmwn0rn4KpKW0NlPP944GLzRrW0hdzOA=\n-----END PUBLIC KEY-----\n",
+	  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAskUPSms+BCok+l7e7GsMnP3YIfLjaV0GjxY6ETXH+C4=\n-----END PUBLIC KEY-----\n",
       "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxgOy/iqzTJGKDrMb+VdO4/dZNjUGfcNGz9IlZav94Z4=\n-----END PUBLIC KEY-----\n",
       "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAu+Uvkdf8vOV+A+z2re3CUdlWp5U4JgjYj5upANAonY=\n-----END PUBLIC KEY-----\n"
     ],
@@ -59,7 +60,7 @@
     "chainSignature": ""
   },
   "storage": {
-    "snapshotIntervalSeconds": 300,
+    "snapshotIntervalSeconds": 30,
     "path": "./zkic_chain_data"
   },
   "protocol": {

@@ -137,7 +137,7 @@ async function runTests() {
         fatherName: 'Father Doe',
         motherName: 'Mother Doe'
       },
-      registrarPrivateKey: 'mock-registrar-privatekey', // Mock - would be valid in production
+      registrarPrivateKey: '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIDzvL8qqJGRR0/JFolgyaxNDujnfWgJQgYwikNAwGR4n\n-----END PRIVATE KEY-----', // Mock - would be valid in production
       parentKeys: ['mock-father-pubkey', 'mock-mother-pubkey']
     };
     
