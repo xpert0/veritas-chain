@@ -89,6 +89,7 @@ let scanCount = 0;
 /**
  * Discover peers on local network using IP scan
  * Scans constantly without delay but logs only every 100 scans
+ * Don't log if at least one peer found (to reduce noise)
  * @returns {Promise<string[]>} Array of peer addresses
  */
 export async function discoverLocalPeers() {
@@ -114,15 +115,6 @@ export async function discoverLocalPeers() {
     // Increment scan count and log only every 100 scans
     scanCount++;
     const shouldLog = (scanCount % 100 === 0);
-    
-    if (shouldLog || scanCount === 1) {
-      logger.debug('Scanning network', { 
-        subnet: config.subnet, 
-        hostCount,
-        localIP,
-        scanNumber: scanCount
-      });
-    }
     
     // Limit scan to reasonable size to avoid overwhelming the network
     const maxHosts = Math.min(hostCount, 65536);
@@ -152,9 +144,20 @@ export async function discoverLocalPeers() {
       }
     }
     
-    if (shouldLog || peers.length > 0) {
-      logger.info('Local peers discovered', { count: peers.length, scanNumber: scanCount });
+    // Only log if: 
+    // 1. It's the designated log cycle (every 100 scans) AND no peers found
+    // 2. OR it's the first scan
+    if (scanCount === 1 && peers.length === 0) {
+      logger.debug('Scanning network', { 
+        subnet: config.subnet, 
+        hostCount,
+        localIP,
+        scanNumber: scanCount
+      });
+    } else if (shouldLog && peers.length === 0) {
+      logger.info('Local peer scan update', { count: 0, scanNumber: scanCount });
     }
+    // Don't log if at least one peer found
   } catch (error) {
     logger.error('Local peer discovery failed', error.message);
   }
@@ -192,9 +195,11 @@ async function checkPeerAvailability(ip, port) {
 }
 
 let lastDNSDiscovery = 0;
+let dnsQueryCount = 0;
 
 /**
  * Discover peers via DNS TXT records
+ * Only log if record is invalid (once every 3 scans)
  * @returns {Promise<string[]>} Array of peer addresses
  */
 export async function discoverDNSPeers() {
@@ -205,10 +210,9 @@ export async function discoverDNSPeers() {
   }
   
   const peers = [];
+  dnsQueryCount++;
   
   try {
-    logger.debug('Querying DNS for peers', { dns: config.discoveryDNS });
-    
     const records = await resolveTxt(config.discoveryDNS);
     
     for (const record of records) {
@@ -226,11 +230,13 @@ export async function discoverDNSPeers() {
       }
     }
     
-    logger.info('DNS peers discovered', { count: peers.length });
+    // Don't log successful DNS discoveries to reduce noise
   } catch (error) {
-    if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
-      logger.debug('No DNS TXT records found');
-    } else {
+    // Only log invalid DNS records once every 3 scans
+    if ((error.code === 'ENOTFOUND' || error.code === 'ENODATA') && (dnsQueryCount % 3 === 0)) {
+      logger.debug('DNS record not found or empty', { dns: config.discoveryDNS, queryCount: dnsQueryCount });
+    } else if (error.code !== 'ENOTFOUND' && error.code !== 'ENODATA') {
+      // Always log actual errors (not just missing records)
       logger.error('DNS peer discovery failed', error.message);
     }
   }
@@ -243,8 +249,6 @@ export async function discoverDNSPeers() {
  * @returns {Promise<string[]>} Array of unique peer addresses
  */
 export async function discoverPeers() {
-  logger.info('Starting peer discovery');
-  
   const now = Date.now();
   const timeSinceLastDNS = now - lastDNSDiscovery;
   
@@ -264,9 +268,36 @@ export async function discoverPeers() {
   
   const allPeers = [...new Set([...localPeers, ...dnsPeers])];
   
-  logger.info('Peer discovery completed', { totalPeers: allPeers.length });
-  
   return allPeers;
+}
+
+/**
+ * Bootstrap peer discovery - scan subnet 3 times, then DNS once
+ * Used during initial startup to find peers before deciding whether to create new chain
+ * @returns {Promise<string[]>} Array of unique peer addresses
+ */
+export async function bootstrapDiscovery() {
+  logger.info('Starting bootstrap peer discovery');
+  const allPeers = new Set();
+  
+  // Scan subnet 3 times
+  logger.info('Scanning local subnet (3 attempts)');
+  for (let i = 0; i < 3; i++) {
+    const localPeers = await discoverLocalPeers();
+    localPeers.forEach(peer => allPeers.add(peer));
+    logger.debug(`Subnet scan ${i + 1}/3 completed`, { peersFound: localPeers.length });
+  }
+  
+  // Then scan DNS once
+  logger.info('Scanning DNS for peers (1 attempt)');
+  const dnsPeers = await discoverDNSPeers();
+  dnsPeers.forEach(peer => allPeers.add(peer));
+  lastDNSDiscovery = Date.now(); // Mark DNS as queried
+  
+  const peers = Array.from(allPeers);
+  logger.info('Bootstrap discovery completed', { totalPeers: peers.length });
+  
+  return peers;
 }
 
 /**
@@ -330,6 +361,7 @@ export default {
   discoverLocalPeers,
   discoverDNSPeers,
   discoverPeers,
+  bootstrapDiscovery,
   getDiscoveredPeers,
   addPeer,
   removePeer,

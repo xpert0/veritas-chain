@@ -176,15 +176,13 @@ async function processEventAction(eventResult) {
  * @returns {Promise<void>}
  */
 export async function discoverAndConnect() {
-  logger.info('Starting peer discovery and connection');
-  
   const config = getNetworkConfig();
   
   // Discover peers
   const peers = await discovery.discoverPeers();
   
   if (peers.length === 0) {
-    logger.debug('No new peers discovered');
+    // Don't log when no peers discovered during continuous scanning
     return;
   }
   
@@ -246,17 +244,11 @@ export async function discoverAndConnect() {
 
 /**
  * Start full mesh networking
+ * Assumes P2P server is already started and initial discovery done
  * @returns {Promise<void>}
  */
 export async function startMesh() {
-  logger.info('Starting mesh network initialization');
-  
-  // Start P2P server
-  await startP2PServer();
-  
-  // Initial discovery and connection
-  logger.info('Performing initial peer discovery and connection');
-  await discoverAndConnect();
+  logger.info('Starting continuous peer discovery and gossip');
   
   // Start continuous local scan (every 1 second) with throttled DNS
   // Logs only every 100 scans
@@ -272,8 +264,7 @@ export async function startMesh() {
   // Start gossip
   gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
   
-  logger.info('Full mesh networking started', {
-    p2pServerRunning: true,
+  logger.info('Continuous discovery and gossip started', {
     continuousScanEnabled: true,
     gossipEnabled: true
   });
@@ -357,6 +348,76 @@ export async function broadcastPruning(blockHash) {
 }
 
 /**
+ * Bootstrap peer discovery and determine if we need to sync or create new chain
+ * Scans subnet 3 times, then DNS once
+ * @returns {Promise<{hasPeers: boolean, bestPeer: Object|null}>}
+ */
+export async function bootstrapPeerDiscovery() {
+  logger.info('Bootstrap: discovering peers before chain initialization');
+  
+  const config = getNetworkConfig();
+  
+  // Discover peers (3x subnet + 1x DNS)
+  const peers = await discovery.bootstrapDiscovery();
+  
+  if (peers.length === 0) {
+    logger.info('Bootstrap: no online peers found');
+    return { hasPeers: false, bestPeer: null };
+  }
+  
+  logger.info('Bootstrap: peers found, performing handshakes', { count: peers.length });
+  
+  // Handshake with peers
+  const handshakeResults = await handshake.handshakeWithPeers(peers, peerId, config.p2pPort);
+  
+  // Filter successful handshakes and build peer info
+  const connectedPeers = [];
+  for (let i = 0; i < handshakeResults.length; i++) {
+    const result = handshakeResults[i];
+    if (result.success) {
+      connectedPeers.push({
+        address: peers[i],
+        chainLength: result.peerChainLength,
+        lastUpdated: result.peerLastUpdated,
+        chainId: result.peerChainId
+      });
+      
+      // Add to active peers
+      if (!activePeers.includes(peers[i])) {
+        activePeers.push(peers[i]);
+      }
+    }
+  }
+  
+  if (connectedPeers.length === 0) {
+    logger.warn('Bootstrap: no successful peer connections');
+    return { hasPeers: false, bestPeer: null };
+  }
+  
+  // Find peer with longest chain
+  const bestPeer = connectedPeers.reduce((best, current) => {
+    if (!best || current.chainLength > best.chainLength) {
+      return current;
+    }
+    if (current.chainLength === best.chainLength && current.lastUpdated > best.lastUpdated) {
+      return current;
+    }
+    return best;
+  }, null);
+  
+  // Update gossip peer list
+  gossip.updatePeerList(activePeers);
+  
+  logger.info('Bootstrap: peer with longest chain found', {
+    peer: bestPeer.address,
+    chainLength: bestPeer.chainLength,
+    chainId: bestPeer.chainId
+  });
+  
+  return { hasPeers: true, bestPeer };
+}
+
+/**
  * Get network status
  * @returns {Object} Network status
  */
@@ -373,6 +434,7 @@ export default {
   initNetwork,
   startP2PServer,
   discoverAndConnect,
+  bootstrapPeerDiscovery,
   startMesh,
   stopNetwork,
   getActivePeers,
