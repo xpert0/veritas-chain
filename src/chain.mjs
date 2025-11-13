@@ -383,8 +383,8 @@ export default {
   pruneExpiredBlocks,
   replaceChain,
   getChainMetadata,
-  isSignatureUsed,
-  markSignatureUsed,
-  checkSignaturesUsed,
-  markSignaturesUsed
+  // isSignatureUsed,
+  // markSignatureUsed,
+  // checkSignaturesUsed,
+  // markSignaturesUsed
 };
