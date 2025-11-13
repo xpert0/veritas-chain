@@ -37,6 +37,8 @@ async function bootstrap() {
     logger.info('[3/9] Loading chain data...');
     const data = await storage.loadAll();
     
+    let chainInitialized = false;
+    
     if (data.genesis && data.masterKey) {
       // Load existing chain
       logger.info('Existing chain found, loading...');
@@ -52,49 +54,81 @@ async function bootstrap() {
         );
         logger.info('Chain snapshot loaded', { blocks: data.snapshot.chain.length });
       }
-    } else {
-      // Create new chain - first peer must have master_key.json
-      logger.info('No existing chain, creating new genesis...');
-      logger.info('Loading master key from master_key.json...');
-      const masterKey = await genesis.loadMasterKeyFromFile();
       
-      const genesisBlock = await genesis.createGenesisBlock();
-      chain.initializeChain(genesisBlock);
-      
-      // Save initial state
-      await storage.saveMasterKey(masterKey);
-      await storage.saveGenesis(genesisBlock);
-      await storage.saveSnapshot();
-      
-      logger.info('New chain created', { chainId: genesisBlock.chainId });
+      chainInitialized = true;
     }
     
-    // Step 4: Verify chain integrity
-    logger.info('[4/9] Verifying chain integrity...');
+    // Step 4: Initialize network first
+    logger.info('[4/9] Initializing network...');
+    await network.initNetwork();
+    
+    // Step 5: Discover peers before creating chain (if no chain exists)
+    logger.info('[5/9] Discovering peers...');
+    const discoveredPeers = await network.discoverAndConnect();
+    
+    // Step 6: If no existing chain, decide whether to create or sync
+    if (!chainInitialized) {
+      if (discoveredPeers && discoveredPeers.length > 0) {
+        // Peers found - sync chain from them
+        logger.info('Peers discovered, syncing chain from network...', { peerCount: discoveredPeers.length });
+        
+        // The discoverAndConnect already attempted sync, chain should be loaded
+        // Load synced data
+        const syncedData = await storage.loadAll();
+        if (syncedData.genesis && syncedData.masterKey) {
+          genesis.setMasterKeyPair(syncedData.masterKey);
+          genesis.setGenesisBlock(syncedData.genesis);
+          chain.initializeChain(syncedData.genesis);
+          
+          if (syncedData.snapshot && syncedData.snapshot.chain) {
+            chain.replaceChain(
+              syncedData.snapshot.chain,
+              syncedData.snapshot.chainHash,
+              syncedData.snapshot.chainSignature
+            );
+            logger.info('Chain synced from network', { blocks: syncedData.snapshot.chain.length });
+          }
+          chainInitialized = true;
+        }
+      }
+      
+      // If still no chain (no peers or sync failed), create new genesis
+      if (!chainInitialized) {
+        logger.info('No peers found or sync failed, creating new genesis block...');
+        logger.info('Loading master key from master_key.json...');
+        const masterKey = await genesis.loadMasterKeyFromFile();
+        
+        const genesisBlock = await genesis.createGenesisBlock();
+        chain.initializeChain(genesisBlock);
+        
+        // Save initial state
+        await storage.saveMasterKey(masterKey);
+        await storage.saveGenesis(genesisBlock);
+        await storage.saveSnapshot();
+        
+        logger.info('New chain created', { chainId: genesisBlock.chainId });
+        chainInitialized = true;
+      }
+    }
+    
+    // Step 7: Verify chain integrity
+    logger.info('[7/9] Verifying chain integrity...');
     const isValid = chain.verifyChainIntegrity();
     if (!isValid) {
       throw new Error('Chain integrity check failed');
     }
     logger.info('Chain integrity verified');
     
-    // Step 5: Initialize network
-    logger.info('[5/9] Initializing network...');
-    await network.initNetwork();
-    
-    // Step 6: Discover peers
-    logger.info('[6/9] Discovering peers...');
-    await network.discoverAndConnect();
-    
-    // Step 7: Start full mesh
-    logger.info('[7/9] Starting P2P mesh...');
+    // Step 8: Start full mesh
+    logger.info('[8/9] Starting P2P mesh...');
     await network.startMesh();
     
-    // Step 8: Start automatic snapshots
-    logger.info('[8/9] Starting automatic snapshots...');
+    // Step 9: Start automatic snapshots
+    logger.info('[9/9] Starting automatic snapshots...');
     storage.startAutoSnapshot();
     
-    // Step 9: Start HTTP server
-    logger.info('[9/9] Starting HTTP API server...');
+    // Step 10: Start HTTP server
+    logger.info('[10/10] Starting HTTP API server...');
     await startHTTPServer();
     
     logger.info('===== ZKIC Bootstrap Complete =====');
