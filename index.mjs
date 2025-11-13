@@ -30,7 +30,6 @@ async function bootstrap() {
     logger.info('[4/9] Discovering peers...');
     await network.discoverAndConnect();
     logger.info('[5/9] Loading chain data...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
     const data = await storage.loadAll();
     if (data.genesis && data.masterKey) {
       logger.info('Existing chain found, loading...');
