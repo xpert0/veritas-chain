@@ -84,8 +84,11 @@ function getLocalIP() {
   }
 }
 
+let scanCount = 0;
+
 /**
  * Discover peers on local network using IP scan
+ * Scans constantly without delay but logs only every 100 scans
  * @returns {Promise<string[]>} Array of peer addresses
  */
 export async function discoverLocalPeers() {
@@ -108,23 +111,30 @@ export async function discoverLocalPeers() {
     // Parse CIDR notation
     const { networkNum, hostCount, prefix } = parseCIDR(config.subnet);
     
-    logger.debug('Scanning network', { 
-      subnet: config.subnet, 
-      hostCount,
-      localIP 
-    });
+    // Increment scan count and log only every 100 scans
+    scanCount++;
+    const shouldLog = (scanCount % 100 === 0);
+    
+    if (shouldLog || scanCount === 1) {
+      logger.debug('Scanning network', { 
+        subnet: config.subnet, 
+        hostCount,
+        localIP,
+        scanNumber: scanCount
+      });
+    }
     
     // Limit scan to reasonable size to avoid overwhelming the network
     const maxHosts = Math.min(hostCount, 65536);
     
-    if (maxHosts > 1024) {
+    if (maxHosts > 1024 && scanCount === 1) {
       logger.warn('Large subnet detected, limiting scan', { 
         hostCount: maxHosts,
         note: 'Consider using a smaller subnet for faster discovery'
       });
     }
     
-    // Scan all IPs in the subnet range
+    // Scan all IPs in the subnet range - NO DELAY between checks
     const promises = [];
     for (let i = 1; i < maxHosts - 1; i++) {
       const ip = numToIP(networkNum + i);
@@ -142,7 +152,9 @@ export async function discoverLocalPeers() {
       }
     }
     
-    logger.info('Local peers discovered', { count: peers.length });
+    if (shouldLog || peers.length > 0) {
+      logger.info('Local peers discovered', { count: peers.length, scanNumber: scanCount });
+    }
   } catch (error) {
     logger.error('Local peer discovery failed', error.message);
   }
@@ -160,10 +172,11 @@ async function checkPeerAvailability(ip, port) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     
+    // Reduced timeout for faster scanning (50ms instead of 100ms)
     const timeout = setTimeout(() => {
       socket.destroy();
       resolve(null);
-    }, 100);
+    }, 50);
     
     socket.connect(port, ip, () => {
       clearTimeout(timeout);
@@ -177,6 +190,8 @@ async function checkPeerAvailability(ip, port) {
     });
   });
 }
+
+let lastDNSDiscovery = 0;
 
 /**
  * Discover peers via DNS TXT records
@@ -224,16 +239,28 @@ export async function discoverDNSPeers() {
 }
 
 /**
- * Discover all peers (local + DNS)
+ * Discover all peers (local + DNS with throttling)
  * @returns {Promise<string[]>} Array of unique peer addresses
  */
 export async function discoverPeers() {
   logger.info('Starting peer discovery');
   
-  const [localPeers, dnsPeers] = await Promise.all([
-    discoverLocalPeers(),
-    discoverDNSPeers()
-  ]);
+  const now = Date.now();
+  const timeSinceLastDNS = now - lastDNSDiscovery;
+  
+  // Always do local discovery (no delay)
+  const localPeersPromise = discoverLocalPeers();
+  
+  // DNS discovery with 30 second throttle
+  let dnsPeersPromise;
+  if (timeSinceLastDNS >= 30000) { // 30 seconds
+    dnsPeersPromise = discoverDNSPeers();
+    lastDNSDiscovery = now;
+  } else {
+    dnsPeersPromise = Promise.resolve([]);
+  }
+  
+  const [localPeers, dnsPeers] = await Promise.all([localPeersPromise, dnsPeersPromise]);
   
   const allPeers = [...new Set([...localPeers, ...dnsPeers])];
   
@@ -278,7 +305,8 @@ export function clearPeers() {
 
 /**
  * Start periodic peer discovery
- * @param {number} intervalSeconds - Discovery interval in seconds
+ * Scans constantly but with DNS throttling
+ * @param {number} intervalSeconds - Discovery interval in seconds (for local scan)
  * @returns {NodeJS.Timeout} Interval handle
  */
 export function startPeriodicDiscovery(intervalSeconds = 300) {

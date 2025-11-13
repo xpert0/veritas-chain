@@ -214,10 +214,33 @@ export async function syncWithBestPeer(peers) {
   const bestPeer = sortedPeers[0];
   const currentLength = chain.getChainLength();
   
+  logger.info('Syncing with best peer', {
+    peer: bestPeer.address,
+    peerChainLength: bestPeer.chainLength,
+    localChainLength: currentLength,
+    peerLastUpdated: bestPeer.lastUpdated
+  });
+  
   // Determine if we need full or incremental sync
   const fromIndex = (bestPeer.chainLength > currentLength) ? currentLength : 0;
   
-  return await syncWithPeer(bestPeer.address, fromIndex);
+  const success = await syncWithPeer(bestPeer.address, fromIndex);
+  
+  if (!success) {
+    logger.warn('Failed to sync with best peer, trying alternatives');
+    // Try next best peers
+    for (let i = 1; i < Math.min(sortedPeers.length, 3); i++) {
+      const altPeer = sortedPeers[i];
+      logger.info('Attempting sync with alternative peer', { peer: altPeer.address });
+      const altSuccess = await syncWithPeer(altPeer.address, fromIndex);
+      if (altSuccess) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  return success;
 }
 
 /**

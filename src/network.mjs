@@ -184,9 +184,11 @@ export async function discoverAndConnect() {
   const peers = await discovery.discoverPeers();
   
   if (peers.length === 0) {
-    logger.warn('No peers discovered');
+    logger.debug('No new peers discovered');
     return;
   }
+  
+  logger.info('Discovered peers, initiating handshakes', { count: peers.length });
   
   // Handshake with peers
   const handshakeResults = await handshake.handshakeWithPeers(peers, peerId, config.p2pPort);
@@ -205,23 +207,40 @@ export async function discoverAndConnect() {
     }
   }
   
+  if (connectedPeers.length === 0) {
+    logger.warn('No successful peer connections');
+    return;
+  }
+  
   // Update active peers list (merge with existing)
   const newPeers = connectedPeers.map(p => p.address);
+  let newPeersAdded = 0;
   for (const peer of newPeers) {
     if (!activePeers.includes(peer)) {
       activePeers.push(peer);
+      newPeersAdded++;
     }
   }
   
   // Update gossip peer list
   gossip.updatePeerList(activePeers);
   
-  logger.info('Connected to peers', { count: activePeers.length });
+  logger.info('Peer connection update', { 
+    totalActivePeers: activePeers.length,
+    newPeersAdded,
+    connectedThisRound: connectedPeers.length
+  });
   
   // Sync if needed
   const peersNeedingSync = connectedPeers.filter(p => p.needsSync);
   if (peersNeedingSync.length > 0) {
-    await sync.syncWithBestPeer(peersNeedingSync);
+    logger.info('Peers requiring sync detected', { count: peersNeedingSync.length });
+    const syncSuccess = await sync.syncWithBestPeer(peersNeedingSync);
+    if (syncSuccess) {
+      logger.info('Chain synchronized successfully');
+    } else {
+      logger.warn('Chain synchronization failed');
+    }
   }
 }
 
@@ -230,25 +249,34 @@ export async function discoverAndConnect() {
  * @returns {Promise<void>}
  */
 export async function startMesh() {
+  logger.info('Starting mesh network initialization');
+  
   // Start P2P server
   await startP2PServer();
   
-  // Discover and connect to peers
+  // Initial discovery and connection
+  logger.info('Performing initial peer discovery and connection');
   await discoverAndConnect();
   
-  // Start periodic discovery and reconnection
+  // Start continuous local scan (every 1 second) with throttled DNS
+  // Logs only every 100 scans
+  logger.info('Starting continuous peer discovery (1 second intervals)');
   discoveryInterval = setInterval(async () => {
     try {
       await discoverAndConnect();
     } catch (error) {
-      logger.error('Periodic discovery and connection failed', error.message);
+      logger.error('Continuous discovery and connection failed', error.message);
     }
-  }, 300 * 1000); // Every 5 minutes
+  }, 1000); // Every 1 second for constant scanning
   
   // Start gossip
   gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
   
-  logger.info('Full mesh networking started');
+  logger.info('Full mesh networking started', {
+    p2pServerRunning: true,
+    continuousScanEnabled: true,
+    gossipEnabled: true
+  });
 }
 
 /**
