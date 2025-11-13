@@ -25,13 +25,12 @@ async function bootstrap() {
     await config.loadConfig();
     logger.info('[2/9] Initializing storage...');
     await storage.initStorage();
-    const data = await storage.loadAll();
     logger.info('[3/9] Initializing network...');
     await network.initNetwork();
     logger.info('[4/9] Discovering peers...');
     await network.discoverAndConnect();
     logger.info('[5/9] Loading chain data...');
-    // const data = await storage.loadAll();
+    const data = await storage.loadAll();
     if (data.genesis && data.masterKey) {
       logger.info('Existing chain found, loading...');
       genesis.setMasterKeyPair(data.masterKey);
