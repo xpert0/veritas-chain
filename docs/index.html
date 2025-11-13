@@ -205,6 +205,63 @@
         </div>
 
         <div class="section">
+            <h2>Keypair Generation and Signing</h2>
+            <p>Before using the API endpoints that require signatures, you need to understand how to generate Ed25519 keypairs and create signatures.</p>
+            
+            <h3>Generating Ed25519 Keypairs</h3>
+            <p>Use Node.js crypto module to generate secure Ed25519 keypairs:</p>
+            <pre><code>import crypto from 'crypto';
+import { promisify } from 'util';
+
+const generateKeyPair = promisify(crypto.generateKeyPair);
+
+// Generate a new Ed25519 keypair
+const { publicKey, privateKey } = await generateKeyPair('ed25519', {
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+});
+
+console.log('Public Key:\n', publicKey);
+console.log('Private Key:\n', privateKey);</code></pre>
+
+            <h3>Creating Signatures</h3>
+            <p>Signatures are created by signing specific data with a registrar's private key:</p>
+            <pre><code>import crypto from 'crypto';
+
+// For registration: sign the data object
+const data = {
+  name: "John Doe",
+  dob: "1990-05-15",
+  address: "123 Main St"
+};
+const dataString = JSON.stringify(data);
+
+// Sign with registrar's private key
+const signature = crypto.sign(null, Buffer.from(dataString), registrarPrivateKey);
+const signatureBase64 = signature.toString('base64');
+
+console.log('Signature:', signatureBase64);</code></pre>
+
+            <h3>Verifying Signatures</h3>
+            <p>Signatures can be verified using the public key:</p>
+            <pre><code>import crypto from 'crypto';
+
+const isValid = crypto.verify(
+  null,
+  Buffer.from(dataString),
+  registrarPublicKey,
+  Buffer.from(signatureBase64, 'base64')
+);
+
+console.log('Signature valid:', isValid);</code></pre>
+
+            <div class="note">
+                <div class="note-title">Important: Signatures Must Be From Other Registrars</div>
+                When submitting requests, the <code>registrarPrivateKey</code> field is used for authentication of the submitter. The <code>signatures</code> array must contain signatures from <strong>OTHER</strong> authorized registrars (not the submitter). Each signature signs the specific data being submitted (e.g., the data object for registration, newData for updates, or public key for key registration).
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Endpoints</h2>
 
             <!-- GET /api/chain -->
@@ -275,19 +332,19 @@
                         <td>registrarPrivateKey</td>
                         <td>string</td>
                         <td>Yes</td>
-                        <td>Private key of the authorized registrar (public key calculated internally and checked against config.json KeyRegistry)</td>
+                        <td>Private key of the submitting registrar (used for authentication, not counted as a signature)</td>
                     </tr>
                     <tr>
-                        <td>registrarSignature</td>
-                        <td>string</td>
+                        <td>signatures</td>
+                        <td>array</td>
                         <td>Yes</td>
-                        <td>Signature from the authorized registrar</td>
+                        <td>Array of base64-encoded signatures from OTHER authorized registrars. Each signature must sign JSON.stringify(data). Must meet config requirement (default: 2)</td>
                     </tr>
                     <tr>
                         <td>parentKeys</td>
                         <td>array</td>
                         <td>Yes</td>
-                        <td>Array of parent public keys (at least 1 required, both preferred)</td>
+                        <td>Array of parent private keys (at least 1 required, both preferred)</td>
                     </tr>
                 </table>
 
@@ -310,15 +367,21 @@
       "motherName": "Mother Doe"
     },
     "registrarPrivateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
-    "registrarSignature": "signature-from-registrar",
-    "parentKeys": ["father-pubkey", "mother-pubkey"]
+    "signatures": [
+      "base64-encoded-signature-from-registrar2",
+      "base64-encoded-signature-from-registrar3"
+    ],
+    "parentKeys": [
+      "-----BEGIN PRIVATE KEY-----\nfather-private-key\n-----END PRIVATE KEY-----",
+      "-----BEGIN PRIVATE KEY-----\nmother-private-key\n-----END PRIVATE KEY-----"
+    ]
   }'</code></pre>
                 </div>
                 
                 <div id="register-windows" class="tab-content">
                     <pre><code>curl.exe -X POST http://localhost:8081/api/register ^
   -H "Content-Type: application/json" ^
-  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"registrarPrivateKey\": \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\", \"registrarSignature\": \"signature-from-registrar\", \"parentKeys\": [\"father-pubkey\", \"mother-pubkey\"]}"</code></pre>
+  -d "{\"data\": {\"name\": \"John Doe\", \"dob\": \"1990-05-15\", \"address\": \"123 Main St\", \"bloodGroup\": \"O+\", \"fatherName\": \"Father Doe\", \"motherName\": \"Mother Doe\"}, \"registrarPrivateKey\": \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\", \"signatures\": [\"base64-sig-1\", \"base64-sig-2\"], \"parentKeys\": [\"-----BEGIN PRIVATE KEY-----\\nfather-key\\n-----END PRIVATE KEY-----\", \"-----BEGIN PRIVATE KEY-----\\nmother-key\\n-----END PRIVATE KEY-----\"]}"</code></pre>
                 </div>
 
                 <h3>Response</h3>
@@ -331,8 +394,77 @@
 }</code></pre>
 
                 <div class="note">
-                    <div class="note-title">Parent Keys Required</div>
-                    The system requires at least one parent key (both preferred) to establish family lineage. The registrar must be authorized in config.json KeyRegistry.
+                    <div class="note-title">Signatures from Other Registrars</div>
+                    The submitting registrar provides their private key for authentication. The <code>signatures</code> array must contain signatures from OTHER authorized registrars (not the submitter). Each signature must sign the exact data object being registered: <code>JSON.stringify(data)</code>.
+                </div>
+            </div>
+
+            <!-- POST /api/keyregister -->
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="path">/keyregister</span>
+                </div>
+                <p class="description">Register a new authorized registrar to the KeyRegistry</p>
+                
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>newRegistrarPrivateKey</td>
+                        <td>string</td>
+                        <td>Yes</td>
+                        <td>Private key of the new registrar to be added. Public key is derived internally.</td>
+                    </tr>
+                    <tr>
+                        <td>signatures</td>
+                        <td>array</td>
+                        <td>Yes</td>
+                        <td>Array of base64-encoded signatures from existing authorized registrars. Each signature must sign the new registrar's public key (PEM format). Must meet config requirement (default: 3)</td>
+                    </tr>
+                </table>
+
+                <h3>Request</h3>
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab(event, 'keyregister-linux')">Linux/Mac</div>
+                    <div class="tab" onclick="showTab(event, 'keyregister-windows')">Windows</div>
+                </div>
+                
+                <div id="keyregister-linux" class="tab-content active">
+                    <pre><code>curl -X POST http://localhost:8081/api/keyregister \
+  -H "Content-Type: application/json" \
+  -d '{
+    "newRegistrarPrivateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+    "signatures": [
+      "base64-encoded-signature-from-existing-registrar1",
+      "base64-encoded-signature-from-existing-registrar2",
+      "base64-encoded-signature-from-existing-registrar3"
+    ]
+  }'</code></pre>
+                </div>
+                
+                <div id="keyregister-windows" class="tab-content">
+                    <pre><code>curl.exe -X POST http://localhost:8081/api/keyregister ^
+  -H "Content-Type: application/json" ^
+  -d "{\"newRegistrarPrivateKey\": \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\", \"signatures\": [\"base64-sig-1\", \"base64-sig-2\", \"base64-sig-3\"]}"</code></pre>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code>{
+  "success": true,
+  "registrarPublicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+  "message": "New registrar approved. Add this public key to config.json KeyRegistry to complete registration.",
+  "approvedBy": ["registrar1...", "registrar2...", "registrar3..."]
+}</code></pre>
+
+                <div class="note">
+                    <div class="note-title">Manual Configuration Step Required</div>
+                    After successful approval, you must manually add the returned <code>registrarPublicKey</code> to the <code>KeyRegistry</code> array in <code>config.json</code> to complete the registration. Existing registrars sign the new registrar's public key (computed from the private key) to approve them.
                 </div>
             </div>
 

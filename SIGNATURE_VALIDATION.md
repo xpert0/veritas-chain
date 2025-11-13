@@ -104,42 +104,44 @@ Registers a new identity block on the chain.
 ```
 
 **How It Works:**
-1. One registrar provides their private key (automatically counted as 1 signature)
-2. Additional registrars sign the `data` object and provide their signatures
-3. Each signature in the `signatures` array must be a signature of `JSON.stringify(data)`
-4. Total signatures = 1 (from registrarPrivateKey) + signatures.length
-5. Must meet the requirement in `config.json` → `consensus.requiredSignatures.registration`
+1. One registrar submits the request with their private key for authentication
+2. **OTHER** registrars (not the submitter) sign the `data` object and provide their signatures
+3. Each signature in the `signatures` array must be:
+   - A signature of `JSON.stringify(data)`
+   - From a different registrar than the one submitting
+4. Signatures array length must meet the requirement in `config.json` → `consensus.requiredSignatures.registration`
 
 **Example Workflow:**
 ```javascript
-// Registrar 1 (submitting the request)
+// Registrar 1 (submitting the request - authenticates but doesn't sign)
 const registrar1PrivateKey = "-----BEGIN PRIVATE KEY-----\n...";
 
-// Registrar 2 creates a signature
+// Registrar 2 creates a signature (different from submitter)
 const data = { name: "John Doe", dob: "1990-05-15", ... };
 const dataString = JSON.stringify(data);
 const sig2 = crypto.sign(null, Buffer.from(dataString), registrar2PrivateKey);
 const signature2 = sig2.toString('base64');
 
-// Registrar 3 creates a signature
+// Registrar 3 creates a signature (different from submitter)
 const sig3 = crypto.sign(null, Buffer.from(dataString), registrar3PrivateKey);
 const signature3 = sig3.toString('base64');
 
 // Submit registration
 const request = {
   data: data,
-  registrarPrivateKey: registrar1PrivateKey,
-  signatures: [signature2, signature3],
+  registrarPrivateKey: registrar1PrivateKey,  // Submitter authentication
+  signatures: [signature2, signature3],       // Signatures from OTHER registrars
   parentKeys: [parent1PrivateKey, parent2PrivateKey]
 };
 ```
 
 **Validation:**
-1. Total signatures must meet configured requirement (default: 2)
+1. Signatures array length must meet configured requirement (default: 2)
 2. Each signature must be from an authorized registrar (in KeyRegistry)
-3. Signatures are verified against the exact `data` being submitted
-4. At least one parent private key must be provided
-5. No duplicate registrar signatures allowed
+3. **Signatures must NOT be from the submitting registrar**
+4. Signatures are verified against the exact `data` being submitted
+5. At least one parent private key must be provided
+6. No duplicate registrar signatures allowed
 
 ### POST /api/update
 
@@ -163,18 +165,19 @@ Updates an existing identity block.
 ```
 
 **How It Works:**
-1. One registrar provides their private key (automatically counted as 1 signature)
-2. Additional registrars sign the `newData` object and provide their signatures
-3. Each signature in the `signatures` array must be a signature of `JSON.stringify(newData)`
-4. Total signatures = 1 (from registrarPrivateKey) + signatures.length
-5. Must meet the requirement in `config.json` → `consensus.requiredSignatures.update`
+1. One registrar submits the request with their private key for authentication
+2. **OTHER** registrars (not the submitter) sign the `newData` object and provide their signatures
+3. Each signature in the `signatures` array must be:
+   - A signature of `JSON.stringify(newData)`
+   - From a different registrar than the one submitting
+4. Signatures array length must meet the requirement in `config.json` → `consensus.requiredSignatures.update`
 
 **Example Workflow:**
 ```javascript
-// Registrar 1 (submitting the request)
+// Registrar 1 (submitting the request - authenticates but doesn't sign)
 const registrar1PrivateKey = "-----BEGIN PRIVATE KEY-----\n...";
 
-// Registrar 2 creates a signature of newData
+// Registrar 2 creates a signature of newData (different from submitter)
 const newData = { address: "456 New Street" };
 const newDataString = JSON.stringify(newData);
 const sig2 = crypto.sign(null, Buffer.from(newDataString), registrar2PrivateKey);
@@ -200,11 +203,89 @@ const request = {
 ```
 
 **Validation:**
-1. Total signatures must meet configured requirement (default: 3 for updates)
+1. Signatures array length must meet configured requirement (default: 3 for updates)
 2. Each signature must be from an authorized registrar
-3. Signatures are verified against the exact `newData` being submitted
-4. Owner must provide valid private key matching the block
-5. No duplicate registrar signatures allowed
+3. **Signatures must NOT be from the submitting registrar**
+4. Signatures are verified against the exact `newData` being submitted
+5. Owner must provide valid private key matching the block
+6. No duplicate registrar signatures allowed
+
+### POST /api/keyregister
+
+Registers a new authorized registrar to the KeyRegistry.
+
+**Request Format:**
+```json
+{
+  "newRegistrarPrivateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+  "signatures": [
+    "base64-encoded-signature-1",
+    "base64-encoded-signature-2",
+    "base64-encoded-signature-3"
+  ]
+}
+```
+
+**How It Works:**
+1. A new registrar provides their private key
+2. The system derives the public key from the private key internally
+3. **Existing** registrars sign the new registrar's public key
+4. Each signature in the `signatures` array must be:
+   - A signature of the new registrar's public key (PEM format string)
+   - From an existing authorized registrar in KeyRegistry
+5. Signatures array length must meet the requirement in `config.json` → `consensus.requiredSignatures.keyregistration` (default: 3)
+
+**Example Workflow:**
+```javascript
+// New registrar generates their keypair
+const { publicKey: newPubKey, privateKey: newPrivKey } = await crypto.generateKeyPair('ed25519', {
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+});
+
+// Derive the public key (this happens server-side)
+const newRegistrarPublicKey = crypto.createPublicKey(newPrivKey).export({
+  type: 'spki',
+  format: 'pem'
+});
+
+// Existing Registrar 1 signs the new public key
+const sig1 = crypto.sign(null, Buffer.from(newRegistrarPublicKey), existingRegistrar1PrivateKey);
+const signature1 = sig1.toString('base64');
+
+// Existing Registrar 2 signs the new public key
+const sig2 = crypto.sign(null, Buffer.from(newRegistrarPublicKey), existingRegistrar2PrivateKey);
+const signature2 = sig2.toString('base64');
+
+// Existing Registrar 3 signs the new public key
+const sig3 = crypto.sign(null, Buffer.from(newRegistrarPublicKey), existingRegistrar3PrivateKey);
+const signature3 = sig3.toString('base64');
+
+// Submit key registration
+const request = {
+  newRegistrarPrivateKey: newPrivKey,
+  signatures: [signature1, signature2, signature3]
+};
+```
+
+**Validation:**
+1. Signatures array length must meet configured requirement (default: 3)
+2. Each signature must be from an existing authorized registrar (in KeyRegistry)
+3. Signatures are verified against the new registrar's public key (computed from private key)
+4. New registrar cannot already exist in KeyRegistry
+5. No duplicate signatures allowed
+
+**Response:**
+```json
+{
+  "success": true,
+  "registrarPublicKey": "-----BEGIN PUBLIC KEY-----\n...",
+  "message": "New registrar approved. Add this public key to config.json KeyRegistry to complete registration.",
+  "approvedBy": ["existing_registrar_1...", "existing_registrar_2...", "existing_registrar_3..."]
+}
+```
+
+**Note:** The endpoint validates and approves the new registrar, but you must manually add the returned `registrarPublicKey` to the `config.json` file's `KeyRegistry` array to complete the registration.
 
 ## Configuration
 
@@ -220,13 +301,16 @@ The `config.json` file specifies signature requirements:
     ],
     "requiredSignatures": {
       "registration": 2,
-      "update": 3
+      "update": 3,
+      "keyregistration": 3
     }
   }
 }
 ```
 
-- `registration`: Total number of registrar signatures required to register new identity
+- `registration`: Number of signatures required from OTHER registrars (not the submitter) to register new identity
+- `update`: Number of signatures required from OTHER registrars (not the submitter) to update identity data
+- `keyregistration`: Number of signatures required from existing registrars to approve a new registrar
 - `update`: Total number of registrar signatures required to update identity data
 
 **Note**: The total includes the one submitting (via `registrarPrivateKey`) plus additional signatures.

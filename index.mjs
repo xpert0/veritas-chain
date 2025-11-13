@@ -155,6 +155,8 @@ async function handleRequest(req, res, url) {
     handleGetChain(req, res);
   } else if (req.method === 'POST' && path === '/api/register') {
     await handleRegister(req, res);
+  } else if (req.method === 'POST' && path === '/api/keyregister') {
+    await handleKeyRegister(req, res);
   } else if (req.method === 'POST' && path === '/api/verify') {
     await handleVerify(req, res);
   } else if (req.method === 'POST' && path === '/api/token') {
@@ -228,13 +230,19 @@ async function handleRegister(req, res) {
   const consensusConfig = config.getConsensusConfig();
   const requiredSigs = consensusConfig.requiredSignatures.registration;
   
-  // Total signatures = 1 (from registrarPrivateKey) + additional signatures
-  const totalSigs = 1 + body.signatures.length;
-  
-  if (totalSigs < requiredSigs) {
+  // Check if we have enough signatures (signatures must be from other registrars, not the submitter)
+  if (body.signatures.length < requiredSigs) {
     sendJSON(res, 403, { 
-      error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${totalSigs} (1 registrar + ${body.signatures.length} additional)`
+      error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${body.signatures.length}`
     });
+    return;
+  }
+  
+  // Verify the submitting registrar is authorized
+  const submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  
+  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(submittingRegistrarPubKey)) {
+    sendJSON(res, 403, { error: `Submitting registrar not authorized: ${submittingRegistrarPubKey}` });
     return;
   }
   
@@ -242,18 +250,7 @@ async function handleRegister(req, res) {
   const message = JSON.stringify(body.data);
   const validatedRegistrars = new Set();
   
-  // 1. Verify the registrar's private key and create their signature
-  const registrarPublicKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
-  
-  // Verify registrar is in KeyRegistry
-  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
-    sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
-    return;
-  }
-  
-  validatedRegistrars.add(registrarPublicKey);
-  
-  // 2. Verify additional signatures from other registrars
+  // Verify signatures from other registrars (not the submitting one)
   for (const signature of body.signatures) {
     if (typeof signature !== 'string') {
       sendJSON(res, 400, { error: 'Each signature must be a base64 string' });
@@ -265,6 +262,11 @@ async function handleRegister(req, res) {
     let validRegistrar = null;
     
     for (const registrarPubKey of consensusConfig.KeyRegistry) {
+      // Skip the submitting registrar - signatures must be from others
+      if (registrarPubKey === submittingRegistrarPubKey) {
+        continue;
+      }
+      
       // Skip if this registrar already signed
       if (validatedRegistrars.has(registrarPubKey)) {
         continue;
@@ -280,7 +282,7 @@ async function handleRegister(req, res) {
     }
     
     if (!signatureValid) {
-      sendJSON(res, 401, { error: 'Invalid signature or signature from unauthorized/duplicate registrar' });
+      sendJSON(res, 401, { error: 'Invalid signature or signature from unauthorized/duplicate/submitting registrar' });
       return;
     }
     
@@ -333,6 +335,96 @@ async function handleRegister(req, res) {
  * Handle POST /api/keyregister
  * Register a new authorized registrar
  */
+async function handleKeyRegister(req, res) {
+  const body = await readBody(req);
+  
+  if (!body.newRegistrarPrivateKey || !body.signatures) {
+    sendJSON(res, 400, { 
+      error: 'Missing required fields: newRegistrarPrivateKey, signatures (array)' 
+    });
+    return;
+  }
+  
+  // Validate signatures is an array
+  if (!Array.isArray(body.signatures)) {
+    sendJSON(res, 400, { error: 'signatures must be an array' });
+    return;
+  }
+  
+  // Get required number of signatures from config
+  const consensusConfig = config.getConsensusConfig();
+  const requiredSigs = consensusConfig.requiredSignatures.keyregistration || 3;
+  
+  if (body.signatures.length < requiredSigs) {
+    sendJSON(res, 403, { 
+      error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${body.signatures.length}`
+    });
+    return;
+  }
+  
+  // Derive public key from new registrar's private key
+  const newRegistrarPublicKey = crypto.derivePublicKeyFromPrivate(body.newRegistrarPrivateKey);
+  
+  // Check if registrar already exists
+  if (consensusConfig.KeyRegistry && consensusConfig.KeyRegistry.includes(newRegistrarPublicKey)) {
+    sendJSON(res, 400, { error: 'Registrar already exists in KeyRegistry' });
+    return;
+  }
+  
+  // Message to verify signatures against (the new registrar's public key)
+  const message = newRegistrarPublicKey;
+  const validatedRegistrars = new Set();
+  
+  // Verify signatures from existing registrars
+  for (const signature of body.signatures) {
+    if (typeof signature !== 'string') {
+      sendJSON(res, 400, { error: 'Each signature must be a base64 string' });
+      return;
+    }
+    
+    // Try to verify the signature against each registrar in KeyRegistry
+    let signatureValid = false;
+    let validRegistrar = null;
+    
+    for (const registrarPubKey of consensusConfig.KeyRegistry) {
+      // Skip if this registrar already signed
+      if (validatedRegistrars.has(registrarPubKey)) {
+        continue;
+      }
+      
+      // Try to verify signature with this registrar's public key
+      const isValid = crypto.verifyEd25519(message, signature, registrarPubKey);
+      if (isValid) {
+        signatureValid = true;
+        validRegistrar = registrarPubKey;
+        break;
+      }
+    }
+    
+    if (!signatureValid) {
+      sendJSON(res, 401, { error: 'Invalid signature or signature from unauthorized/duplicate registrar' });
+      return;
+    }
+    
+    validatedRegistrars.add(validRegistrar);
+  }
+  
+  // Add new registrar to KeyRegistry (update config.json)
+  // Note: This requires updating the config file, which is not typical for runtime changes
+  // For now, we'll return success but note that manual config update is needed
+  logger.info('New registrar approved', { 
+    publicKey: newRegistrarPublicKey.substring(0, 50) + '...',
+    approvedBy: validatedRegistrars.size 
+  });
+  
+  sendJSON(res, 201, { 
+    success: true,
+    registrarPublicKey: newRegistrarPublicKey,
+    message: 'New registrar approved. Add this public key to config.json KeyRegistry to complete registration.',
+    approvedBy: Array.from(validatedRegistrars).map(pk => pk.substring(0, 20) + '...')
+  });
+}
+
 /**
  * Handle POST /api/verify
  */
@@ -485,14 +577,12 @@ async function handleUpdate(req, res) {
   const consensusConfig = config.getConsensusConfig();
   const requiredSigs = consensusConfig.requiredSignatures.update;
   
-  // Total signatures = 1 (from registrarPrivateKey) + additional signatures
-  const totalSigs = 1 + body.signatures.length;
-  
-  if (totalSigs < requiredSigs) {
+  // Check if we have enough signatures (signatures must be from other registrars, not the submitter)
+  if (body.signatures.length < requiredSigs) {
     sendJSON(res, 400, { 
       error: 'Insufficient signatures',
       required: requiredSigs,
-      provided: totalSigs
+      provided: body.signatures.length
     });
     return;
   }
@@ -504,22 +594,19 @@ async function handleUpdate(req, res) {
     return;
   }
   
+  // Verify the submitting registrar is authorized
+  const submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  
+  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(submittingRegistrarPubKey)) {
+    sendJSON(res, 403, { error: `Submitting registrar not authorized: ${submittingRegistrarPubKey}` });
+    return;
+  }
+  
   // Message to verify signatures against (the newData being updated)
   const message = JSON.stringify(body.newData);
   const validatedRegistrars = new Set();
   
-  // 1. Verify the registrar's private key
-  const registrarPublicKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
-  
-  // Verify registrar is in KeyRegistry
-  if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
-    sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
-    return;
-  }
-  
-  validatedRegistrars.add(registrarPublicKey);
-  
-  // 2. Verify additional signatures from other registrars
+  // Verify signatures from other registrars (not the submitting one)
   for (const signature of body.signatures) {
     if (typeof signature !== 'string') {
       sendJSON(res, 400, { error: 'Each signature must be a base64 string' });
@@ -531,6 +618,11 @@ async function handleUpdate(req, res) {
     let validRegistrar = null;
     
     for (const registrarPubKey of consensusConfig.KeyRegistry) {
+      // Skip the submitting registrar - signatures must be from others
+      if (registrarPubKey === submittingRegistrarPubKey) {
+        continue;
+      }
+      
       // Skip if this registrar already signed
       if (validatedRegistrars.has(registrarPubKey)) {
         continue;
@@ -546,7 +638,7 @@ async function handleUpdate(req, res) {
     }
     
     if (!signatureValid) {
-      sendJSON(res, 401, { error: 'Invalid signature or signature from unauthorized/duplicate registrar' });
+      sendJSON(res, 401, { error: 'Invalid signature or signature from unauthorized/duplicate/submitting registrar' });
       return;
     }
     
