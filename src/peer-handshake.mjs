@@ -4,15 +4,9 @@ import * as genesis from './genesis.mjs';
 import * as chain from './chain.mjs';
 import { getCurrentTimestamp } from './utils.mjs';
 
-/**
- * Create handshake message
- * @param {string} peerId - This peer's ID
- * @returns {Object} Handshake message
- */
 export function createHandshakeMessage(peerId) {
   const genesisBlock = genesis.getGenesisBlock();
   const metadata = chain.getChainMetadata();
-  
   return {
     type: 'HANDSHAKE',
     peerId,
@@ -26,33 +20,21 @@ export function createHandshakeMessage(peerId) {
   };
 }
 
-/**
- * Send handshake to peer
- * @param {string} peerAddress - Peer address (ip:port)
- * @param {string} peerId - This peer's ID
- * @returns {Promise<Object>} Handshake response
- */
 export async function sendHandshake(peerAddress, peerId) {
   return new Promise((resolve, reject) => {
     const [host, port] = peerAddress.split(':');
     const client = new net.Socket();
-    
     let responseData = '';
-    
     const timeout = setTimeout(() => {
       client.destroy();
       reject(new Error('Handshake timeout'));
     }, 5000);
-    
     client.connect(parseInt(port), host, () => {
       const message = createHandshakeMessage(peerId);
       client.write(JSON.stringify(message) + '\n');
     });
-    
     client.on('data', (data) => {
       responseData += data.toString();
-      
-      // Check if we have a complete JSON message
       if (responseData.includes('\n')) {
         clearTimeout(timeout);
         try {
@@ -65,12 +47,10 @@ export async function sendHandshake(peerAddress, peerId) {
         }
       }
     });
-    
     client.on('error', (error) => {
       clearTimeout(timeout);
       reject(error);
     });
-    
     client.on('close', () => {
       clearTimeout(timeout);
       if (responseData === '') {
@@ -80,71 +60,49 @@ export async function sendHandshake(peerAddress, peerId) {
   });
 }
 
-/**
- * Handle incoming handshake
- * @param {Object} message - Handshake message
- * @param {string} peerId - This peer's ID
- * @returns {Object} Handshake response
- */
 export function handleHandshake(message, peerId) {
   if (message.type !== 'HANDSHAKE') {
     throw new Error('Invalid message type');
   }
-  
   logger.debug('Handshake received', { 
     from: message.peerId,
     chainLength: message.chainLength 
   });
-  
-  // Create response with our chain info
   const response = createHandshakeMessage(peerId);
   response.type = 'HANDSHAKE_RESPONSE';
-  
   return response;
 }
 
-/**
- * Validate handshake response
- * @param {Object} response - Handshake response
- * @returns {{valid: boolean, reason?: string, needsSync?: boolean}}
- */
 export function validateHandshakeResponse(response) {
   if (!response) {
     return { valid: false, reason: 'No response received' };
   }
-  
   if (response.type !== 'HANDSHAKE_RESPONSE') {
     return { valid: false, reason: 'Invalid response type' };
   }
-  
   const genesisBlock = genesis.getGenesisBlock();
-  
-  // Check if same chain
   if (response.chainId && genesisBlock && response.chainId !== genesisBlock.chainId) {
     return { valid: false, reason: 'Different chain ID' };
   }
-  
-  // Check if peer has longer/newer chain
   const metadata = chain.getChainMetadata();
-  const needsSync = (
-    response.chainLength > metadata.length ||
-    (response.chainLength === metadata.length && 
-     response.lastUpdated > metadata.lastUpdated)
+  // const needsSync = (
+  //   response.chainLength > metadata.length ||
+  //   (response.chainLength === metadata.length && 
+  //    response.lastUpdated > metadata.lastUpdated)
+  // );
+  const needsSync = (!
+    response.chainLength <= metadata.length || true
   );
-  
-  // Verify chain authenticity if peer has data
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
       response.chainHash,
       response.chainSignature,
       response.masterPubKey
     );
-    
     if (!isAuthentic) {
       return { valid: false, reason: 'Invalid chain signature' };
     }
   }
-  
   return { 
     valid: true, 
     needsSync,
@@ -153,19 +111,11 @@ export function validateHandshakeResponse(response) {
   };
 }
 
-/**
- * Perform handshake with peer
- * @param {string} peerAddress - Peer address
- * @param {string} peerId - This peer's ID
- * @returns {Promise<{success: boolean, response?: Object, needsSync?: boolean, reason?: string}>}
- */
 export async function performHandshake(peerAddress, peerId) {
   try {
     logger.debug('Performing handshake', { peer: peerAddress });
-    
     const response = await sendHandshake(peerAddress, peerId);
     const validation = validateHandshakeResponse(response);
-    
     if (!validation.valid) {
       logger.warn('Handshake validation failed', { 
         peer: peerAddress,
@@ -176,12 +126,10 @@ export async function performHandshake(peerAddress, peerId) {
         reason: validation.reason 
       };
     }
-    
     logger.info('Handshake successful', { 
       peer: peerAddress,
       needsSync: validation.needsSync
     });
-    
     return {
       success: true,
       response,
@@ -201,30 +149,19 @@ export async function performHandshake(peerAddress, peerId) {
   }
 }
 
-/**
- * Handshake with multiple peers
- * @param {string[]} peerAddresses - Array of peer addresses
- * @param {string} peerId - This peer's ID
- * @returns {Promise<Object[]>} Array of handshake results
- */
 export async function handshakeWithPeers(peerAddresses, peerId) {
   logger.info('Initiating handshakes', { count: peerAddresses.length });
-  
   const promises = peerAddresses.map(address => 
     performHandshake(address, peerId)
   );
-  
   const results = await Promise.allSettled(promises);
-  
   const successfulHandshakes = results
     .filter(r => r.status === 'fulfilled' && r.value.success)
     .map(r => r.value);
-  
   logger.info('Handshakes completed', { 
     total: peerAddresses.length,
     successful: successfulHandshakes.length
   });
-  
   return successfulHandshakes;
 }
 
