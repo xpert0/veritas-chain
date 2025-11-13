@@ -146,21 +146,50 @@ async function bootstrap() {
     logger.info('[8/9] Starting continuous peer discovery and gossip...');
     await network.startMesh();
     
-    // Step 9: Start automatic snapshots
-    logger.info('[9/9] Starting automatic snapshots...');
+    // Step 9: Check peer count and warn about master_key.json if needed
+    logger.info('[9/11] Checking network peer count...');
+    checkMasterKeyDeletion();
+    
+    // Step 10: Start automatic snapshots
+    logger.info('[10/11] Starting automatic snapshots...');
     storage.startAutoSnapshot();
     
-    // Step 10: Start HTTP server
-    logger.info('Starting HTTP API server...');
+    // Step 11: Start HTTP server
+    logger.info('[11/11] Starting HTTP API server...');
     await startHTTPServer();
     
     logger.info('===== ZKIC Bootstrap Complete =====');
     logger.info('Node is ready', network.getNetworkStatus());
     
+    // Start periodic master key deletion check (every 5 minutes)
+    setInterval(() => {
+      checkMasterKeyDeletion();
+    }, 5 * 60 * 1000); // 5 minutes
+    
   } catch (error) {
     logger.error('Bootstrap failed', error);
     await shutdown();
     process.exit(1);
+  }
+}
+
+/**
+ * Check if master_key.json should be deleted based on peer count
+ */
+function checkMasterKeyDeletion() {
+  const peers = network.getActivePeers();
+  const peerCount = peers.length;
+  
+  // Check if we have the master key (only genesis creator has this)
+  const masterKey = genesis.getMasterKeyPair();
+  
+  if (masterKey && peerCount >= 1) {
+    logger.warn('==================== SECURITY NOTICE ====================');
+    logger.warn(`Network has ${peerCount + 1} total peers (including this node)`);
+    logger.warn('master_key.json should now be DELETED for security');
+    logger.warn('The chain ID and genesis are already persisted in the blockchain');
+    logger.warn('Command: rm master_key.json');
+    logger.warn('========================================================');
   }
 }
 

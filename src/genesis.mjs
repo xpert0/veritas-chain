@@ -81,9 +81,10 @@ export async function createGenesisBlock() {
   
   const template = deepClone(getGenesisTemplate());
   
-  // Generate chainId deterministically from master public key
-  // This ensures all peers using the same master key create the same chain
-  const chainId = crypto.sha512(masterKeyPair.publicKey);
+  // Generate chainId from master public key hash + timestamp
+  // This creates a unique chain identifier that doesn't require master key to persist
+  const chainSeed = masterKeyPair.publicKey + getCurrentTimestamp();
+  const chainId = crypto.sha512(chainSeed);
   
   genesisBlock = {
     ...template,
@@ -102,6 +103,7 @@ export async function createGenesisBlock() {
   genesisBlock.chainSignature = crypto.signEd25519(genesisData, masterKeyPair.privateKey);
   
   logger.info('Genesis block created', { chainId });
+  logger.info('IMPORTANT: Once 2 peers are connected, master_key.json should be deleted for security');
   return genesisBlock;
 }
 
