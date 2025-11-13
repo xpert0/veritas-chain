@@ -239,7 +239,13 @@ async function handleRegister(req, res) {
   }
   
   // Verify the submitting registrar is authorized
-  const submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  let submittingRegistrarPubKey;
+  try {
+    submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  } catch (error) {
+    sendJSON(res, 400, { error: 'Invalid registrar private key format' });
+    return;
+  }
   
   if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(submittingRegistrarPubKey)) {
     sendJSON(res, 403, { error: `Submitting registrar not authorized: ${submittingRegistrarPubKey}` });
@@ -363,7 +369,13 @@ async function handleKeyRegister(req, res) {
   }
   
   // Derive public key from new registrar's private key
-  const newRegistrarPublicKey = crypto.derivePublicKeyFromPrivate(body.newRegistrarPrivateKey);
+  let newRegistrarPublicKey;
+  try {
+    newRegistrarPublicKey = crypto.derivePublicKeyFromPrivate(body.newRegistrarPrivateKey);
+  } catch (error) {
+    sendJSON(res, 400, { error: 'Invalid private key format' });
+    return;
+  }
   
   // Check if registrar already exists
   if (consensusConfig.KeyRegistry && consensusConfig.KeyRegistry.includes(newRegistrarPublicKey)) {
@@ -595,7 +607,13 @@ async function handleUpdate(req, res) {
   }
   
   // Verify the submitting registrar is authorized
-  const submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  let submittingRegistrarPubKey;
+  try {
+    submittingRegistrarPubKey = crypto.derivePublicKeyFromPrivate(body.registrarPrivateKey);
+  } catch (error) {
+    sendJSON(res, 400, { error: 'Invalid registrar private key format' });
+    return;
+  }
   
   if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(submittingRegistrarPubKey)) {
     sendJSON(res, 403, { error: `Submitting registrar not authorized: ${submittingRegistrarPubKey}` });
@@ -704,7 +722,13 @@ async function handleRotate(req, res) {
   }
   
   // Calculate new public key from new private key
-  const newPublicKey = crypto.derivePublicKeyFromPrivate(body.newPrivateKey);
+  let newPublicKey;
+  try {
+    newPublicKey = crypto.derivePublicKeyFromPrivate(body.newPrivateKey);
+  } catch (error) {
+    sendJSON(res, 400, { error: 'Invalid new private key format' });
+    return;
+  }
   
   // Calculate new lifecycle stage based on rotation count
   const currentStage = targetBlock.metadata.lifecycleStage;

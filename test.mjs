@@ -186,7 +186,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 7: POST /api/register - Unauthorized registrar (403 expected)');
+    console.log('Test 7: POST /api/register - Unauthorized registrar (400 expected for invalid key)');
     try {
       const errorResult = await request('POST', '/register', {
         data: { name: 'Test', dob: '2000-01-01' },
@@ -194,11 +194,11 @@ async function runTests() {
         signatures: ['sig1', 'sig2'],
         parentKeys: ['parent1']
       }, true);
-      if (errorResult.statusCode === 403 || errorResult.statusCode === 400 || errorResult.statusCode === 500) {
-        console.log('✓ Correctly rejected invalid/unauthorized registrar (HTTP ' + errorResult.statusCode + ')');
+      if (errorResult.statusCode === 400) {
+        console.log('✓ Correctly rejected invalid private key format (HTTP ' + errorResult.statusCode + ')');
         testsPassed++;
       } else {
-        console.log('✗ Expected 403/400/500 but got', errorResult.statusCode);
+        console.log('✗ Expected 400 but got', errorResult.statusCode);
         testsFailed++;
       }
     } catch (err) {
@@ -246,10 +246,30 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 10: POST /api/keyregister - Insufficient signatures (403 expected)');
+    console.log('Test 10: POST /api/keyregister - Invalid private key format (400 expected)');
     try {
       const errorResult = await request('POST', '/keyregister', {
-        newRegistrarPrivateKey: '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----',
+        newRegistrarPrivateKey: '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFakeKeyThatDoesNotExist123456789012345678\n-----END PRIVATE KEY-----',
+        signatures: ['sig1', 'sig2', 'sig3']
+      }, true);
+      if (errorResult.statusCode === 400) {
+        console.log('✓ Correctly rejected invalid private key format');
+        console.log(`  Error: ${errorResult.error}`);
+        testsPassed++;
+      } else {
+        console.log('✗ Expected 400 but got', errorResult.statusCode);
+        testsFailed++;
+      }
+    } catch (err) {
+      console.log('✗ Test failed:', err.message);
+      testsFailed++;
+    }
+    console.log();
+    
+    console.log('Test 11: POST /api/keyregister - Insufficient signatures (403 expected)');
+    try {
+      const errorResult = await request('POST', '/keyregister', {
+        newRegistrarPrivateKey: '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIAoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=\n-----END PRIVATE KEY-----',
         signatures: []
       }, true);
       if (errorResult.statusCode === 403) {
@@ -269,7 +289,7 @@ async function runTests() {
     // ===== POST /api/token Tests =====
     console.log('=== POST /api/token Tests ===\n');
     
-    console.log('Test 11: POST /api/token - Missing fields (400 expected)');
+    console.log('Test 12: POST /api/token - Missing fields (400 expected)');
     try {
       const errorResult = await request('POST', '/token', {}, true);
       if (errorResult.statusCode === 400) {
@@ -285,7 +305,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 12: POST /api/token - Invalid maxUses > 5 (400 expected)');
+    console.log('Test 13: POST /api/token - Invalid maxUses > 5 (400 expected)');
     try {
       const errorResult = await request('POST', '/token', {
         blockHash: 'fake-hash',
@@ -307,7 +327,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 13: POST /api/token - Invalid maxUses < 1 (400 expected)');
+    console.log('Test 14: POST /api/token - Invalid maxUses < 1 (400 expected)');
     try {
       const errorResult = await request('POST', '/token', {
         blockHash: 'fake-hash',
@@ -328,7 +348,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 14: POST /api/token - Non-existent block (404 expected)');
+    console.log('Test 15: POST /api/token - Non-existent block (404 expected)');
     try {
       const errorResult = await request('POST', '/token', {
         blockHash: 'non-existent-block-hash',
@@ -352,7 +372,7 @@ async function runTests() {
     // ===== POST /api/verify Tests =====
     console.log('=== POST /api/verify Tests ===\n');
     
-    console.log('Test 15: POST /api/verify - Missing fields (400 expected)');
+    console.log('Test 16: POST /api/verify - Missing fields (400 expected)');
     try {
       const errorResult = await request('POST', '/verify', {}, true);
       if (errorResult.statusCode === 400) {
@@ -368,7 +388,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 16: POST /api/verify - Empty conditions array (400 expected)');
+    console.log('Test 17: POST /api/verify - Empty conditions array (400 expected)');
     try {
       const errorResult = await request('POST', '/verify', {
         blockHash: 'hash',
@@ -389,7 +409,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 17: POST /api/verify - Non-existent block (404 expected)');
+    console.log('Test 18: POST /api/verify - Non-existent block (404 expected)');
     try {
       const errorResult = await request('POST', '/verify', {
         blockHash: 'non-existent-hash',
@@ -413,7 +433,7 @@ async function runTests() {
     // ===== POST /api/update Tests =====
     console.log('=== POST /api/update Tests ===\n');
     
-    console.log('Test 18: POST /api/update - Missing fields (400 expected)');
+    console.log('Test 19: POST /api/update - Missing fields (400 expected)');
     try {
       const errorResult = await request('POST', '/update', {}, true);
       if (errorResult.statusCode === 400) {
@@ -430,7 +450,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 19: POST /api/update - Invalid signature format (400 expected)');
+    console.log('Test 20: POST /api/update - Invalid signature format (400 expected)');
     try {
       const errorResult = await request('POST', '/update', {
         blockHash: 'hash',
@@ -453,7 +473,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 20: POST /api/update - Insufficient signatures (400 expected)');
+    console.log('Test 21: POST /api/update - Insufficient signatures (400 expected)');
     try {
       const errorResult = await request('POST', '/update', {
         blockHash: 'hash',
@@ -477,7 +497,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 21: POST /api/update - Non-existent block (404 expected)');
+    console.log('Test 22: POST /api/update - Non-existent block (404 expected)');
     try {
       const errorResult = await request('POST', '/update', {
         blockHash: 'non-existent-hash',
@@ -503,7 +523,7 @@ async function runTests() {
     // ===== POST /api/rotate Tests =====
     console.log('=== POST /api/rotate Tests ===\n');
     
-    console.log('Test 22: POST /api/rotate - Missing fields (400 expected)');
+    console.log('Test 23: POST /api/rotate - Missing fields (400 expected)');
     try {
       const errorResult = await request('POST', '/rotate', {}, true);
       if (errorResult.statusCode === 400) {
@@ -519,7 +539,7 @@ async function runTests() {
     }
     console.log();
     
-    console.log('Test 23: POST /api/rotate - Non-existent block (404 expected)');
+    console.log('Test 24: POST /api/rotate - Non-existent block (404 expected)');
     try {
       const errorResult = await request('POST', '/rotate', {
         blockHash: 'non-existent-hash',
@@ -551,12 +571,12 @@ async function runTests() {
       console.log('✓ All Tests Passed!');
       console.log('\nComprehensive test coverage:');
       console.log('  ✓ GET /api/chain - Success cases');
-      console.log('  ✓ POST /api/register - Missing fields, invalid formats, insufficient signatures, unauthorized');
-      console.log('  ✓ POST /api/keyregister - Missing fields, invalid formats, insufficient signatures');
-      console.log('  ✓ POST /api/token - Missing fields, invalid maxUses, non-existent blocks');
-      console.log('  ✓ POST /api/verify - Missing fields, empty conditions, non-existent blocks');
-      console.log('  ✓ POST /api/update - Missing fields, invalid formats, insufficient signatures, non-existent blocks');
-      console.log('  ✓ POST /api/rotate - Missing fields, non-existent blocks');
+      console.log('  ✓ POST /api/register - Missing fields, invalid formats, insufficient signatures, invalid keys (7 tests)');
+      console.log('  ✓ POST /api/keyregister - Missing fields, invalid formats, invalid keys, insufficient signatures (4 tests)');
+      console.log('  ✓ POST /api/token - Missing fields, invalid maxUses, non-existent blocks (4 tests)');
+      console.log('  ✓ POST /api/verify - Missing fields, empty conditions, non-existent blocks (3 tests)');
+      console.log('  ✓ POST /api/update - Missing fields, invalid formats, insufficient signatures, non-existent blocks (4 tests)');
+      console.log('  ✓ POST /api/rotate - Missing fields, non-existent blocks (2 tests)');
       console.log('\nNote: Full integration tests with real signatures require valid keypairs.');
       console.log('See SIGNATURE_VALIDATION.md for signature generation examples.');
       process.exit(0);
