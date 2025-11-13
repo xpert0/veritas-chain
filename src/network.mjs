@@ -85,10 +85,26 @@ export async function startP2PServer() {
 async function handleIncomingMessage(message, socket) {
   logger.debug('Message received', { type: message.type });
   
+  const config = getNetworkConfig();
+  
   switch (message.type) {
     case 'HANDSHAKE':
-      const handshakeResponse = handshake.handleHandshake(message, peerId);
+      const handshakeResponse = handshake.handleHandshake(message, peerId, config.p2pPort);
       socket.write(JSON.stringify(handshakeResponse) + '\n');
+      
+      // Add peer to active peers if not already there
+      // Use the p2pPort from the handshake message if available
+      const peerPort = message.p2pPort || socket.remotePort;
+      const peerAddress = `${socket.remoteAddress.replace('::ffff:', '')}:${peerPort}`;
+      if (!activePeers.includes(peerAddress)) {
+        activePeers.push(peerAddress);
+        discovery.addPeer(peerAddress);
+        gossip.updatePeerList(activePeers);
+        logger.info('New peer added from incoming handshake', { 
+          peer: peerAddress,
+          totalPeers: activePeers.length 
+        });
+      }
       break;
       
     case 'SYNC_REQUEST':
@@ -162,6 +178,8 @@ async function processEventAction(eventResult) {
 export async function discoverAndConnect() {
   logger.info('Starting peer discovery and connection');
   
+  const config = getNetworkConfig();
+  
   // Discover peers
   const peers = await discovery.discoverPeers();
   
@@ -171,19 +189,29 @@ export async function discoverAndConnect() {
   }
   
   // Handshake with peers
-  const handshakeResults = await handshake.handshakeWithPeers(peers, peerId);
+  const handshakeResults = await handshake.handshakeWithPeers(peers, peerId, config.p2pPort);
   
-  // Filter successful handshakes
-  const connectedPeers = handshakeResults
-    .filter(r => r.success)
-    .map(r => ({
-      address: peers[handshakeResults.indexOf(r)],
-      chainLength: r.peerChainLength,
-      lastUpdated: r.peerLastUpdated,
-      needsSync: r.needsSync
-    }));
+  // Filter successful handshakes and build peer info
+  const connectedPeers = [];
+  for (let i = 0; i < handshakeResults.length; i++) {
+    const result = handshakeResults[i];
+    if (result.success) {
+      connectedPeers.push({
+        address: peers[i],
+        chainLength: result.peerChainLength,
+        lastUpdated: result.peerLastUpdated,
+        needsSync: result.needsSync
+      });
+    }
+  }
   
-  activePeers = connectedPeers.map(p => p.address);
+  // Update active peers list (merge with existing)
+  const newPeers = connectedPeers.map(p => p.address);
+  for (const peer of newPeers) {
+    if (!activePeers.includes(peer)) {
+      activePeers.push(peer);
+    }
+  }
   
   // Update gossip peer list
   gossip.updatePeerList(activePeers);
@@ -208,8 +236,14 @@ export async function startMesh() {
   // Discover and connect to peers
   await discoverAndConnect();
   
-  // Start periodic discovery
-  discoveryInterval = discovery.startPeriodicDiscovery(300); // Every 5 minutes
+  // Start periodic discovery and reconnection
+  discoveryInterval = setInterval(async () => {
+    try {
+      await discoverAndConnect();
+    } catch (error) {
+      logger.error('Periodic discovery and connection failed', error.message);
+    }
+  }, 300 * 1000); // Every 5 minutes
   
   // Start gossip
   gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds

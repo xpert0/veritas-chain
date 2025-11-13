@@ -286,7 +286,12 @@ export function startPeriodicDiscovery(intervalSeconds = 300) {
   
   return setInterval(async () => {
     try {
-      await discoverPeers();
+      const peers = await discoverPeers();
+      
+      // Return the discovered peers so the network module can reconnect
+      if (peers.length > 0) {
+        logger.debug('Periodic discovery found peers', { count: peers.length });
+      }
     } catch (error) {
       logger.error('Periodic discovery failed', error.message);
     }

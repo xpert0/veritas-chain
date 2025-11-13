@@ -7,15 +7,17 @@ import { getCurrentTimestamp } from './utils.mjs';
 /**
  * Create handshake message
  * @param {string} peerId - This peer's ID
+ * @param {number} p2pPort - This peer's P2P port
  * @returns {Object} Handshake message
  */
-export function createHandshakeMessage(peerId) {
+export function createHandshakeMessage(peerId, p2pPort = null) {
   const genesisBlock = genesis.getGenesisBlock();
   const metadata = chain.getChainMetadata();
   
   return {
     type: 'HANDSHAKE',
     peerId,
+    p2pPort,
     chainId: genesisBlock?.chainId || null,
     chainLength: metadata.length,
     chainHash: metadata.chainHash,
@@ -30,9 +32,10 @@ export function createHandshakeMessage(peerId) {
  * Send handshake to peer
  * @param {string} peerAddress - Peer address (ip:port)
  * @param {string} peerId - This peer's ID
+ * @param {number} p2pPort - This peer's P2P port
  * @returns {Promise<Object>} Handshake response
  */
-export async function sendHandshake(peerAddress, peerId) {
+export async function sendHandshake(peerAddress, peerId, p2pPort = null) {
   return new Promise((resolve, reject) => {
     const [host, port] = peerAddress.split(':');
     const client = new net.Socket();
@@ -45,7 +48,7 @@ export async function sendHandshake(peerAddress, peerId) {
     }, 5000);
     
     client.connect(parseInt(port), host, () => {
-      const message = createHandshakeMessage(peerId);
+      const message = createHandshakeMessage(peerId, p2pPort);
       client.write(JSON.stringify(message) + '\n');
     });
     
@@ -84,9 +87,10 @@ export async function sendHandshake(peerAddress, peerId) {
  * Handle incoming handshake
  * @param {Object} message - Handshake message
  * @param {string} peerId - This peer's ID
+ * @param {number} p2pPort - This peer's P2P port
  * @returns {Object} Handshake response
  */
-export function handleHandshake(message, peerId) {
+export function handleHandshake(message, peerId, p2pPort = null) {
   if (message.type !== 'HANDSHAKE') {
     throw new Error('Invalid message type');
   }
@@ -97,7 +101,7 @@ export function handleHandshake(message, peerId) {
   });
   
   // Create response with our chain info
-  const response = createHandshakeMessage(peerId);
+  const response = createHandshakeMessage(peerId, p2pPort);
   response.type = 'HANDSHAKE_RESPONSE';
   
   return response;
@@ -157,13 +161,14 @@ export function validateHandshakeResponse(response) {
  * Perform handshake with peer
  * @param {string} peerAddress - Peer address
  * @param {string} peerId - This peer's ID
+ * @param {number} p2pPort - This peer's P2P port
  * @returns {Promise<{success: boolean, response?: Object, needsSync?: boolean, reason?: string}>}
  */
-export async function performHandshake(peerAddress, peerId) {
+export async function performHandshake(peerAddress, peerId, p2pPort = null) {
   try {
     logger.debug('Performing handshake', { peer: peerAddress });
     
-    const response = await sendHandshake(peerAddress, peerId);
+    const response = await sendHandshake(peerAddress, peerId, p2pPort);
     const validation = validateHandshakeResponse(response);
     
     if (!validation.valid) {
@@ -205,27 +210,33 @@ export async function performHandshake(peerAddress, peerId) {
  * Handshake with multiple peers
  * @param {string[]} peerAddresses - Array of peer addresses
  * @param {string} peerId - This peer's ID
+ * @param {number} p2pPort - This peer's P2P port
  * @returns {Promise<Object[]>} Array of handshake results
  */
-export async function handshakeWithPeers(peerAddresses, peerId) {
+export async function handshakeWithPeers(peerAddresses, peerId, p2pPort = null) {
   logger.info('Initiating handshakes', { count: peerAddresses.length });
   
   const promises = peerAddresses.map(address => 
-    performHandshake(address, peerId)
+    performHandshake(address, peerId, p2pPort)
   );
   
   const results = await Promise.allSettled(promises);
   
-  const successfulHandshakes = results
-    .filter(r => r.status === 'fulfilled' && r.value.success)
-    .map(r => r.value);
+  const handshakeResults = results.map(r => {
+    if (r.status === 'fulfilled' && r.value.success) {
+      return r.value;
+    }
+    return { success: false, reason: r.reason || 'Unknown error' };
+  });
+  
+  const successCount = handshakeResults.filter(r => r.success).length;
   
   logger.info('Handshakes completed', { 
     total: peerAddresses.length,
-    successful: successfulHandshakes.length
+    successful: successCount
   });
   
-  return successfulHandshakes;
+  return handshakeResults;
 }
 
 export default {
