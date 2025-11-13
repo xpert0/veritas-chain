@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+zkic_*/
+package-lock.json
+master_key.json
