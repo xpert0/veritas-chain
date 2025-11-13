@@ -81,20 +81,16 @@ async function bootstrap() {
     logger.info('[5/9] Initializing network...');
     await network.initNetwork();
     
-    // Step 6: Discover peers
-    logger.info('[6/9] Discovering peers...');
-    await network.discoverAndConnect();
-    
-    // Step 7: Start full mesh
-    logger.info('[7/9] Starting P2P mesh...');
+    // Step 6: Start P2P mesh (must start server before discovering peers)
+    logger.info('[6/9] Starting P2P mesh...');
     await network.startMesh();
     
-    // Step 8: Start automatic snapshots
-    logger.info('[8/9] Starting automatic snapshots...');
+    // Step 7: Start automatic snapshots
+    logger.info('[7/9] Starting automatic snapshots...');
     storage.startAutoSnapshot();
     
-    // Step 9: Start HTTP server
-    logger.info('[9/9] Starting HTTP API server...');
+    // Step 8: Start HTTP server
+    logger.info('[8/9] Starting HTTP API server...');
     await startHTTPServer();
     
     logger.info('===== ZKIC Bootstrap Complete =====');

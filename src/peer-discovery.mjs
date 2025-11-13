@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import dns from 'dns';
+import net from 'net';
 import os from 'os';
 import * as logger from './logger.mjs';
 import { getNetworkConfig } from './config.mjs';
@@ -157,7 +158,6 @@ export async function discoverLocalPeers() {
  */
 async function checkPeerAvailability(ip, port) {
   return new Promise((resolve) => {
-    const net = require('net');
     const socket = new net.Socket();
     
     const timeout = setTimeout(() => {
