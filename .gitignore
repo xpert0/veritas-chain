@@ -1,6 +1,6 @@
 node_modules/
 *.log
 .DS_Store
-zkic_chain_data/
+zkic_*/
 package-lock.json
 master_key.json
