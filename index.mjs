@@ -228,6 +228,15 @@ async function handleRegister(req, res) {
     return;
   }
   
+  // Validate parent keys (at least one parent required, both preferred)
+  if (!Array.isArray(body.parentKeys) || body.parentKeys.length === 0) {
+    sendJSON(res, 400, { 
+      error: 'At least one parent key required',
+      message: 'Provide array of parent keys (both parents preferred)'
+    });
+    return;
+  }
+  
   // Get required number of signatures from config
   const consensusConfig = config.getConsensusConfig();
   const requiredSigs = consensusConfig.requiredSignatures.registration;
@@ -235,15 +244,6 @@ async function handleRegister(req, res) {
   if (body.registrarSignatures.length < requiredSigs) {
     sendJSON(res, 403, { 
       error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${body.registrarSignatures.length}`
-    });
-    return;
-  }
-  
-  // Validate parent keys (at least one parent required, both preferred)
-  if (!Array.isArray(body.parentKeys) || body.parentKeys.length === 0) {
-    sendJSON(res, 400, { 
-      error: 'At least one parent key required',
-      message: 'Provide array of parent keys (both parents preferred)'
     });
     return;
   }
