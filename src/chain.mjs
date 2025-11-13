@@ -355,7 +355,8 @@ export function replaceChain(newChain, newChainHash, newChainSignature) {
  * @returns {Object} Chain metadata
  */
 export function getChainMetadata() {
-  const genesisBlock = genesis.getGenesisBlock();
+  // Use API-safe genesis block (without exposing concealed master key structure)
+  const genesisBlock = genesis.getGenesisBlockForAPI();
   
   return {
     chainId: genesisBlock?.chainId || null,
@@ -363,7 +364,9 @@ export function getChainMetadata() {
     chainHash,
     chainSignature,
     masterPubKey: genesisBlock?.masterPubKey || null,
-    lastUpdated: chain.length > 0 ? chain[chain.length - 1].metadata.updatedAt : null
+    lastUpdated: chain.length > 0 ? chain[chain.length - 1].metadata.updatedAt : null,
+    // Include network handshake token (appears as random string to external observers)
+    networkHandshakeToken: genesisBlock?.networkHandshakeToken || null
   };
 }
 

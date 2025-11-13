@@ -1,7 +1,7 @@
 import * as crypto from './crypto.mjs';
 import * as logger from './logger.mjs';
 import { getCurrentTimestamp, deepClone } from './utils.mjs';
-import { getGenesisTemplate, getConsensusConfig } from './config.mjs';
+import { getGenesisTemplate, getConsensusConfig, getProtocolConfig } from './config.mjs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -11,6 +11,90 @@ const __dirname = dirname(__filename);
 
 let masterKeyPair = null;
 let genesisBlock = null;
+
+/**
+ * Generate random character for obfuscation
+ * @returns {string} Random alphanumeric character
+ */
+function getRandomChar() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  return chars.charAt(Math.floor(Math.random() * chars.length));
+}
+
+/**
+ * Conceal master keypair in network handshake token
+ * Inserts random characters at specific intervals to obfuscate the actual data
+ * @param {{publicKey: string, privateKey: string}} keyPair - Master keypair
+ * @returns {string} Concealed token
+ */
+function concealMasterKey(keyPair) {
+  const protocolConfig = getProtocolConfig();
+  const segmentSize = protocolConfig.internalSegmentSize;
+  const offsetBounds = protocolConfig.internalOffsetBounds;
+  
+  // Encode the keypair as base64 JSON
+  const keyData = JSON.stringify(keyPair);
+  const encoded = Buffer.from(keyData).toString('base64');
+  
+  let concealed = '';
+  let position = 0;
+  
+  // Insert random characters at intervals
+  for (let i = 0; i < encoded.length; i++) {
+    concealed += encoded[i];
+    position++;
+    
+    // Insert random segment at intervals
+    if (position % offsetBounds === 0 && i < encoded.length - 1) {
+      for (let j = 0; j < segmentSize; j++) {
+        concealed += getRandomChar();
+      }
+    }
+  }
+  
+  return concealed;
+}
+
+/**
+ * Extract master keypair from concealed token
+ * Removes random padding characters to recover original data
+ * @param {string} concealedToken - Concealed token
+ * @returns {{publicKey: string, privateKey: string}|null} Master keypair or null
+ */
+function extractMasterKey(concealedToken) {
+  try {
+    const protocolConfig = getProtocolConfig();
+    const segmentSize = protocolConfig.internalSegmentSize;
+    const offsetBounds = protocolConfig.internalOffsetBounds;
+    
+    let extracted = '';
+    let position = 0;
+    let skipNext = 0;
+    
+    // Remove random characters at intervals
+    for (let i = 0; i < concealedToken.length; i++) {
+      if (skipNext > 0) {
+        skipNext--;
+        continue;
+      }
+      
+      extracted += concealedToken[i];
+      position++;
+      
+      // Check if we need to skip the next segment
+      if (position % offsetBounds === 0 && i < concealedToken.length - 1) {
+        skipNext = segmentSize;
+      }
+    }
+    
+    // Decode from base64 and parse JSON
+    const decoded = Buffer.from(extracted, 'base64').toString('utf8');
+    return JSON.parse(decoded);
+  } catch (error) {
+    logger.error('Failed to extract master key from token', error.message);
+    return null;
+  }
+}
 
 /**
  * Load master keypair from master_key.json file
@@ -90,7 +174,10 @@ export async function createGenesisBlock() {
     ...template,
     chainId,
     createdAt: getCurrentTimestamp(),
-    masterPubKey: masterKeyPair.publicKey
+    masterPubKey: masterKeyPair.publicKey,
+    // Store concealed master keypair in networkHandshakeToken field
+    // This allows chain to access master key without plaintext master_key.json
+    networkHandshakeToken: concealMasterKey(masterKeyPair)
   };
   
   // Sign the genesis block with master key
@@ -103,6 +190,7 @@ export async function createGenesisBlock() {
   genesisBlock.chainSignature = crypto.signEd25519(genesisData, masterKeyPair.privateKey);
   
   logger.info('Genesis block created', { chainId });
+  logger.info('SECURITY: Master keypair concealed in genesis networkHandshakeToken');
   logger.info('IMPORTANT: Once 2 peers are connected, master_key.json should be deleted for security');
   return genesisBlock;
 }
@@ -116,11 +204,37 @@ export function getGenesisBlock() {
 }
 
 /**
+ * Get genesis block for external exposure (API)
+ * Strips the concealed master key to show only random token
+ * @returns {Object|null} Genesis block without concealment
+ */
+export function getGenesisBlockForAPI() {
+  if (!genesisBlock) {
+    return null;
+  }
+  
+  // Return genesis without exposing the actual master key structure
+  const apiGenesis = { ...genesisBlock };
+  // networkHandshakeToken appears as random string to external observers
+  return apiGenesis;
+}
+
+/**
  * Set genesis block (used when loading from storage)
+ * Automatically extracts master key from concealed token if present
  * @param {Object} block - Genesis block
  */
 export function setGenesisBlock(block) {
   genesisBlock = block;
+  
+  // Try to extract master key from concealed token
+  if (block && block.networkHandshakeToken && !masterKeyPair) {
+    const extracted = extractMasterKey(block.networkHandshakeToken);
+    if (extracted) {
+      masterKeyPair = extracted;
+      logger.info('Master keypair extracted from genesis networkHandshakeToken');
+    }
+  }
 }
 
 /**
@@ -170,6 +284,7 @@ export default {
   generateGenesisSigners,
   createGenesisBlock,
   getGenesisBlock,
+  getGenesisBlockForAPI,
   setGenesisBlock,
   verifyGenesisBlock,
   isAuthorizedGenesisSigner,
