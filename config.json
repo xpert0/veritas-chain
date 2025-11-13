@@ -30,7 +30,6 @@
     ],
     "requiredSignatures": {
       "registration": 2,
-      "keyregistration": 3,
       "update": 3
     }
   },
@@ -60,7 +59,7 @@
     "chainSignature": ""
   },
   "storage": {
-    "snapshotIntervalSeconds": 30,
+    "snapshotIntervalSeconds": 300,
     "path": "./zkic_chain_data"
   },
   "protocol": {

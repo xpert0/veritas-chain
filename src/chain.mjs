@@ -382,9 +382,5 @@ export default {
   verifyChainIntegrity,
   pruneExpiredBlocks,
   replaceChain,
-  getChainMetadata,
-  // isSignatureUsed,
-  // markSignatureUsed,
-  // checkSignaturesUsed,
-  // markSignaturesUsed
+  getChainMetadata
 };
