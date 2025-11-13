@@ -93,6 +93,14 @@ export function getConfig() {
 }
 
 /**
+ * Get full configuration (alias for getConfig)
+ * @returns {Object} Full configuration object
+ */
+export function getFullConfig() {
+  return getConfig();
+}
+
+/**
  * Get network configuration
  * @returns {Object} Network config
  */
@@ -171,6 +179,7 @@ export function getProtocolConfig() {
 export default {
   loadConfig,
   getConfig,
+  getFullConfig,
   getNetworkConfig,
   getSecurityConfig,
   getIdentityConfig,

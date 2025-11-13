@@ -12,6 +12,8 @@ import * as verification from './src/verification.mjs';
 import * as chain from './src/chain.mjs';
 import * as storage from './src/storage.mjs';
 import * as network from './src/network.mjs';
+import * as signatureTracker from './src/signature-tracker.mjs';
+import * as keyRegistry from './src/key-registry.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,15 +28,24 @@ async function bootstrap() {
   
   try {
     // Step 1: Load configuration
-    logger.info('[1/9] Loading configuration...');
+    logger.info('[1/11] Loading configuration...');
     await config.loadConfig();
     
     // Step 2: Initialize storage and acquire lock
-    logger.info('[2/9] Initializing storage...');
+    logger.info('[2/11] Initializing storage...');
     await storage.initStorage();
     
+    // Step 2.5: Initialize signature tracker
+    logger.info('[2.5/11] Initializing signature tracker...');
+    await signatureTracker.initSignatureTracker();
+    
+    // Step 2.6: Initialize key registry
+    logger.info('[2.6/11] Initializing key registry...');
+    const cfg = config.getConsensusConfig();
+    keyRegistry.initKeyRegistry(config.getFullConfig());
+    
     // Step 3: Load existing data or create new
-    logger.info('[3/9] Loading chain data...');
+    logger.info('[3/11] Loading chain data...');
     const data = await storage.loadAll();
     
     if (data.genesis && data.masterKey) {
@@ -70,7 +81,7 @@ async function bootstrap() {
     }
     
     // Step 4: Verify chain integrity
-    logger.info('[4/9] Verifying chain integrity...');
+    logger.info('[4/11] Verifying chain integrity...');
     const isValid = chain.verifyChainIntegrity();
     if (!isValid) {
       throw new Error('Chain integrity check failed');
@@ -78,23 +89,23 @@ async function bootstrap() {
     logger.info('Chain integrity verified');
     
     // Step 5: Initialize network
-    logger.info('[5/9] Initializing network...');
+    logger.info('[5/11] Initializing network...');
     await network.initNetwork();
     
     // Step 6: Discover peers
-    logger.info('[6/9] Discovering peers...');
+    logger.info('[6/11] Discovering peers...');
     await network.discoverAndConnect();
     
     // Step 7: Start full mesh
-    logger.info('[7/9] Starting P2P mesh...');
+    logger.info('[7/11] Starting P2P mesh...');
     await network.startMesh();
     
     // Step 8: Start automatic snapshots
-    logger.info('[8/9] Starting automatic snapshots...');
+    logger.info('[8/11] Starting automatic snapshots...');
     storage.startAutoSnapshot();
     
     // Step 9: Start HTTP server
-    logger.info('[9/9] Starting HTTP API server...');
+    logger.info('[9/11] Starting HTTP API server...');
     await startHTTPServer();
     
     logger.info('===== ZKIC Bootstrap Complete =====');
@@ -155,6 +166,8 @@ async function handleRequest(req, res, url) {
     handleGetChain(req, res);
   } else if (req.method === 'POST' && path === '/api/register') {
     await handleRegister(req, res);
+  } else if (req.method === 'POST' && path === '/api/keyregister') {
+    await handleKeyRegister(req, res);
   } else if (req.method === 'POST' && path === '/api/verify') {
     await handleVerify(req, res);
   } else if (req.method === 'POST' && path === '/api/token') {
@@ -238,6 +251,7 @@ async function handleRegister(req, res) {
   // Verify all signatures against the data being registered
   const message = JSON.stringify(body.data);
   const validatedRegistrars = new Set();
+  const signatures = [];
   
   for (const sig of body.registrarSignatures) {
     if (!sig.signature || !sig.registrarPrivateKey) {
@@ -245,11 +259,17 @@ async function handleRegister(req, res) {
       return;
     }
     
+    // Check if signature has been used before
+    if (signatureTracker.isSignatureUsed(sig.signature)) {
+      sendJSON(res, 403, { error: 'Signature has already been used' });
+      return;
+    }
+    
     // Derive public key from private key
     const registrarPublicKey = crypto.derivePublicKeyFromPrivate(sig.registrarPrivateKey);
     
     // Verify registrar is in KeyRegistry
-    if (!consensusConfig.KeyRegistry || !consensusConfig.KeyRegistry.includes(registrarPublicKey)) {
+    if (!keyRegistry.isRegistrar(registrarPublicKey)) {
       sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
       return;
     }
@@ -261,13 +281,14 @@ async function handleRegister(req, res) {
     }
     
     // Verify signature of the data
-    const isValid = crypto.verifyEd25519Signature(message, sig.signature, registrarPublicKey);
+    const isValid = crypto.verifyEd25519(message, sig.signature, registrarPublicKey);
     if (!isValid) {
       sendJSON(res, 401, { error: `Invalid signature from registrar: ${registrarPublicKey}` });
       return;
     }
     
     validatedRegistrars.add(registrarPublicKey);
+    signatures.push(sig.signature);
   }
   
   // Generate keypair for newborn
@@ -297,6 +318,9 @@ async function handleRegister(req, res) {
     return;
   }
   
+  // Mark signatures as used (only after successful block addition)
+  await signatureTracker.markSignaturesAsUsed(signatures);
+  
   // Save and broadcast
   await storage.saveSnapshot();
   await network.broadcastNewBlock(newBlock);
@@ -309,6 +333,111 @@ async function handleRegister(req, res) {
     ownerPublicKey: ownerKeyPair.publicKey,
     ownerPrivateKey: ownerKeyPair.privateKey,
     encryptionKey: encryptionKey.toString('base64')
+  });
+}
+
+/**
+ * Handle POST /api/keyregister
+ * Register a new authorized registrar
+ */
+async function handleKeyRegister(req, res) {
+  const body = await readBody(req);
+  
+  if (!body.newRegistrarPrivateKey || !body.registrarSignatures) {
+    sendJSON(res, 400, { 
+      error: 'Missing required fields: newRegistrarPrivateKey, registrarSignatures (array)' 
+    });
+    return;
+  }
+  
+  // Validate registrarSignatures is an array
+  if (!Array.isArray(body.registrarSignatures)) {
+    sendJSON(res, 400, { error: 'registrarSignatures must be an array' });
+    return;
+  }
+  
+  // Get required number of signatures from config
+  const consensusConfig = config.getConsensusConfig();
+  const requiredSigs = consensusConfig.requiredSignatures.keyregistration;
+  
+  if (body.registrarSignatures.length < requiredSigs) {
+    sendJSON(res, 403, { 
+      error: `Insufficient signatures. Required: ${requiredSigs}, provided: ${body.registrarSignatures.length}`
+    });
+    return;
+  }
+  
+  // Derive public key from new registrar's private key
+  const newRegistrarPublicKey = crypto.derivePublicKeyFromPrivate(body.newRegistrarPrivateKey);
+  
+  // Check if registrar already exists
+  if (keyRegistry.isRegistrar(newRegistrarPublicKey)) {
+    sendJSON(res, 400, { error: 'Registrar already exists in KeyRegistry' });
+    return;
+  }
+  
+  // Verify all signatures against the new registrar's public key
+  const message = newRegistrarPublicKey;
+  const validatedRegistrars = new Set();
+  const signatures = [];
+  
+  for (const sig of body.registrarSignatures) {
+    if (!sig.signature || !sig.registrarPrivateKey) {
+      sendJSON(res, 400, { 
+        error: 'Each signature must include signature and registrarPrivateKey' 
+      });
+      return;
+    }
+    
+    // Check if signature has been used before
+    if (signatureTracker.isSignatureUsed(sig.signature)) {
+      sendJSON(res, 403, { error: 'Signature has already been used' });
+      return;
+    }
+    
+    // Derive public key from private key
+    const registrarPublicKey = crypto.derivePublicKeyFromPrivate(sig.registrarPrivateKey);
+    
+    // Verify registrar is in KeyRegistry
+    if (!keyRegistry.isRegistrar(registrarPublicKey)) {
+      sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
+      return;
+    }
+    
+    // Prevent duplicate registrars
+    if (validatedRegistrars.has(registrarPublicKey)) {
+      sendJSON(res, 400, { error: 'Duplicate registrar signatures detected' });
+      return;
+    }
+    
+    // Verify signature of the new registrar's public key
+    const isValid = crypto.verifyEd25519(message, sig.signature, registrarPublicKey);
+    if (!isValid) {
+      sendJSON(res, 401, { 
+        error: `Invalid signature from registrar: ${registrarPublicKey}` 
+      });
+      return;
+    }
+    
+    validatedRegistrars.add(registrarPublicKey);
+    signatures.push(sig.signature);
+  }
+  
+  // Add new registrar to KeyRegistry
+  await keyRegistry.addRegistrar(newRegistrarPublicKey);
+  
+  // Mark signatures as used (only after successful addition)
+  await signatureTracker.markSignaturesAsUsed(signatures);
+  
+  logger.info('New registrar added', { 
+    publicKey: newRegistrarPublicKey.substring(0, 50) + '...',
+    approvedBy: validatedRegistrars.size 
+  });
+  
+  sendJSON(res, 201, { 
+    success: true,
+    registrarPublicKey: newRegistrarPublicKey,
+    totalRegistrars: keyRegistry.getKeyRegistry().length
   });
 }
 
@@ -449,18 +578,24 @@ async function handleIssueToken(req, res) {
 async function handleUpdate(req, res) {
   const body = await readBody(req);
   
-  if (!body.blockHash || !body.newData || !body.encryptionKey || !body.ownerPrivateKey || !body.signatures) {
-    sendJSON(res, 400, { error: 'Missing required fields' });
+  if (!body.blockHash || !body.newData || !body.encryptionKey || !body.ownerPrivateKey || !body.registrarSignatures) {
+    sendJSON(res, 400, { error: 'Missing required fields: blockHash, newData, encryptionKey, ownerPrivateKey, registrarSignatures' });
     return;
   }
   
-  // Verify required signatures
+  // Validate registrarSignatures is an array
+  if (!Array.isArray(body.registrarSignatures)) {
+    sendJSON(res, 400, { error: 'registrarSignatures must be an array' });
+    return;
+  }
+  
+  // Get required number of signatures from config
   const requiredSigs = genesis.getRequiredSignatures('update');
-  if (body.signatures.length < requiredSigs) {
+  if (body.registrarSignatures.length < requiredSigs) {
     sendJSON(res, 400, { 
       error: 'Insufficient signatures',
       required: requiredSigs,
-      provided: body.signatures.length
+      provided: body.registrarSignatures.length
     });
     return;
   }
@@ -472,6 +607,56 @@ async function handleUpdate(req, res) {
     return;
   }
   
+  // Verify all signatures against the update data
+  const message = JSON.stringify({
+    blockHash: body.blockHash,
+    newData: body.newData
+  });
+  const validatedRegistrars = new Set();
+  const signatures = [];
+  
+  for (const sig of body.registrarSignatures) {
+    if (!sig.signature || !sig.registrarPrivateKey) {
+      sendJSON(res, 400, { 
+        error: 'Each signature must include signature and registrarPrivateKey' 
+      });
+      return;
+    }
+    
+    // Check if signature has been used before
+    if (signatureTracker.isSignatureUsed(sig.signature)) {
+      sendJSON(res, 403, { error: 'Signature has already been used' });
+      return;
+    }
+    
+    // Derive public key from private key
+    const registrarPublicKey = crypto.derivePublicKeyFromPrivate(sig.registrarPrivateKey);
+    
+    // Verify registrar is in KeyRegistry
+    if (!keyRegistry.isRegistrar(registrarPublicKey)) {
+      sendJSON(res, 403, { error: `Registrar not authorized: ${registrarPublicKey}` });
+      return;
+    }
+    
+    // Prevent duplicate registrars
+    if (validatedRegistrars.has(registrarPublicKey)) {
+      sendJSON(res, 400, { error: 'Duplicate registrar signatures detected' });
+      return;
+    }
+    
+    // Verify signature of the data
+    const isValid = crypto.verifyEd25519(message, sig.signature, registrarPublicKey);
+    if (!isValid) {
+      sendJSON(res, 401, { 
+        error: `Invalid signature from registrar: ${registrarPublicKey}` 
+      });
+      return;
+    }
+    
+    validatedRegistrars.add(registrarPublicKey);
+    signatures.push(sig.signature);
+  }
+  
   // Decode encryption key
   const encryptionKey = Buffer.from(body.encryptionKey, 'base64');
   
@@ -481,11 +666,17 @@ async function handleUpdate(req, res) {
   // Update in chain
   chain.updateBlockInChain(body.blockHash, targetBlock);
   
+  // Mark signatures as used (only after successful update)
+  await signatureTracker.markSignaturesAsUsed(signatures);
+  
   // Save and broadcast
   await storage.saveSnapshot();
   await network.broadcastBlockUpdate(targetBlock);
   
-  logger.info('Block updated', { hash: targetBlock.hash });
+  logger.info('Block updated', { 
+    hash: targetBlock.hash,
+    registrars: validatedRegistrars.size 
+  });
   
   sendJSON(res, 200, { 
     success: true,
