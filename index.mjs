@@ -26,6 +26,8 @@ async function bootstrap() {
     logger.info('[2/9] Initializing storage...');
     await storage.initStorage();
     const data = await storage.loadAll();
+    
+    // Step 1: Load stored chain if exists
     if (data.genesis && data.masterKey) {
       logger.info('Existing chain found, loading...');
       genesis.setMasterKeyPair(data.masterKey);
@@ -40,27 +42,45 @@ async function bootstrap() {
         logger.info('Chain snapshot loaded', { blocks: data.snapshot.chain.length });
       }
     }
+    
     logger.info('[3/9] Initializing network...');
     await network.initNetwork();
-    logger.info('[4/9] Discovering peers...');
+    
+    // Step 2: Start P2P server so we can receive peer connections
+    logger.info('[4/9] Starting P2P server...');
+    await network.startP2PServer();
+    
+    // Step 3: Discover peers and check their chains
+    logger.info('[5/9] Discovering peers...');
     await network.discoverAndConnect();
-    logger.warn('chain:',data);
-    logger.info('[5/9] Loading chain data...');
+    
+    // Step 4: After peer discovery and sync, check if we have a genesis block
+    logger.info('[6/9] Loading chain data...');
     const inMemoryGenesis = genesis.getGenesisBlock();
-    console.log(inMemoryGenesis);
-    const inMemoryChainLength = chain.getChainLength();
-    await storage.saveSnapshot();
+    
+    // If we didn't have a stored genesis but got one from peers, save it
     if (!data.genesis && inMemoryGenesis) {
       try {
         await storage.saveGenesis(inMemoryGenesis);
-        logger.info('In-memory genesis persisted after peer sync', { chainId: inMemoryGenesis.chainId });
+        logger.info('Genesis block received from peer and persisted', { chainId: inMemoryGenesis.chainId });
+        // Also save the master key if we have it (from peer sync)
+        const masterKeyPair = genesis.getMasterKeyPair();
+        if (masterKeyPair) {
+          await storage.saveMasterKey(masterKeyPair);
+          logger.info('Master key persisted from peer');
+        }
       } catch (err) {
-        logger.warn('Failed to persist in-memory genesis after sync', err.message);
+        logger.warn('Failed to persist genesis block received from peer', err.message);
       }
     }
-    logger.info('In-memory chain persisted', { blocks: chain.getChainLength() });
+    
+    // Save current chain state
+    await storage.saveSnapshot();
+    logger.info('Chain state persisted', { blocks: chain.getChainLength() });
+    
+    // Step 5: Only create new genesis if we still don't have one (no stored chain AND no peers)
     if (!genesis.getGenesisBlock()) {
-      logger.info('No existing chain, creating new genesis...');
+      logger.info('No existing chain and no peers found, creating new genesis...');
       logger.info('Loading master key from master_key.json...');
       const masterKey = await genesis.loadMasterKeyFromFile();
       const genesisBlock = await genesis.createGenesisBlock();
@@ -70,17 +90,17 @@ async function bootstrap() {
       await storage.saveSnapshot();
       logger.info('New chain created', { chainId: genesisBlock.chainId });
     }
-    logger.info('[6/9] Verifying chain integrity...');
+    
+    logger.info('[7/9] Verifying chain integrity...');
     const isValid = chain.verifyChainIntegrity();
     if (!isValid) {
       throw new Error('Chain integrity check failed');
     }
     logger.info('Chain integrity verified');
-    logger.info('[7/9] Starting P2P mesh...');
-    await network.startMesh();
-    logger.info('[8/9] Starting automatic snapshots...');
+    logger.info('[8/9] Starting periodic discovery and gossip...');
+    await network.startPeriodicDiscoveryAndGossip();
     storage.startAutoSnapshot();
-    logger.info('[9/9] Starting HTTP API server...');
+    logger.info('[10/10] Starting HTTP API server...');
     await startHTTPServer();
     logger.info('===== ZKIC Bootstrap Complete =====');
     logger.info('Node is ready', network.getNetworkStatus());

@@ -2,6 +2,7 @@ import net from 'net';
 import * as logger from './logger.mjs';
 import * as chain from './chain.mjs';
 import * as storage from './storage.mjs';
+import * as genesis from './genesis.mjs';
 
 export async function requestSync(peerAddress, fromIndex = 0) {
   return new Promise((resolve, reject) => {
@@ -63,6 +64,7 @@ export function handleSyncRequest(message) {
   const fromIndex = message.fromIndex || 0;
   const fullChain = chain.getChain();
   const metadata = chain.getChainMetadata();
+  const genesisBlock = genesis.getGenesisBlock();
   const blocks = fullChain.slice(fromIndex);
   logger.debug('Sync request handled', { 
     fromIndex,
@@ -72,6 +74,7 @@ export function handleSyncRequest(message) {
     type: 'SYNC_RESPONSE',
     fromIndex,
     blocks,
+    genesis: genesisBlock,
     chainHash: metadata.chainHash,
     chainSignature: metadata.chainSignature,
     totalLength: fullChain.length,
@@ -106,16 +109,27 @@ export async function applySyncData(syncData) {
   try {
     const localGenesis = genesis.getGenesisBlock();
     if (!localGenesis) {
-      const candidate = newChain[0];
-      if (!candidate) {
-        logger.warn('No genesis candidate in sync data; aborting sync');
+      // Use genesis from sync data if provided
+      const genesisCandidate = syncData.genesis;
+      if (!genesisCandidate) {
+        logger.warn('No genesis in sync data; aborting sync');
         return false;
       }
-      if (candidate.masterPubKey && candidate.chainSignature) {
-        genesis.setGenesisBlock(candidate);
+      if (genesisCandidate.masterPubKey && genesisCandidate.chainSignature) {
+        // Verify the genesis block
+        if (!genesis.verifyGenesisBlock(genesisCandidate)) {
+          logger.warn('Genesis block verification failed; aborting sync');
+          return false;
+        }
+        genesis.setGenesisBlock(genesisCandidate);
+        // Initialize the chain with the genesis block
+        chain.initializeChain(genesisCandidate);
+        // Set master key pair with only public key (no private key from peer)
+        // This allows verification but not signing
+        genesis.setMasterKeyPair({ publicKey: genesisCandidate.masterPubKey, privateKey: null });
         try {
-          await storage.saveGenesis(candidate);
-          logger.info('Genesis block set from peer and persisted', { chainId: candidate.chainId });
+          await storage.saveGenesis(genesisCandidate);
+          logger.info('Genesis block set from peer and persisted', { chainId: genesisCandidate.chainId });
         } catch (err) {
           logger.warn('Failed to persist genesis block received from peer', err.message);
         }
@@ -136,7 +150,6 @@ export async function applySyncData(syncData) {
   if (success) {
     try {
       await storage.saveSnapshot();
-      console.log(chain.getChainLength());
       logger.info('Chain synced successfully', { 
         newLength: chain.getChainLength() 
       });

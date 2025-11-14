@@ -140,12 +140,56 @@ export async function discoverAndConnect() {
   }
 }
 
+async function periodicDiscoveryAndConnect() {
+  try {
+    const peers = await discovery.discoverPeers();
+    if (peers.length === 0) {
+      return;
+    }
+    // Filter out already connected peers
+    const newPeers = peers.filter(p => !activePeers.includes(p));
+    if (newPeers.length === 0) {
+      return;
+    }
+    logger.info('New peers discovered', { count: newPeers.length });
+    const handshakeResults = await handshake.handshakeWithPeers(newPeers, peerId);
+    const connectedPeers = handshakeResults
+      .filter(r => r.success)
+      .map(r => ({
+        address: newPeers[handshakeResults.indexOf(r)],
+        chainLength: r.peerChainLength,
+        lastUpdated: r.peerLastUpdated,
+        needsSync: r.needsSync
+      }));
+    // Add new peers to active peers list
+    const newActivePeers = connectedPeers.map(p => p.address);
+    activePeers.push(...newActivePeers);
+    gossip.updatePeerList(activePeers);
+    logger.info('Connected to new peers', { count: newActivePeers.length, total: activePeers.length });
+    // Sync with new peers if needed
+    const peersNeedingSync = connectedPeers.filter(p => p.needsSync);
+    if (peersNeedingSync.length > 0) {
+      await sync.syncWithBestPeer(peersNeedingSync);
+    }
+  } catch (error) {
+    logger.error('Periodic discovery and connect failed', error.message);
+  }
+}
+
 export async function startMesh() {
   await startP2PServer();
   await discoverAndConnect();
-  discoveryInterval = discovery.startPeriodicDiscovery(30); // Every 0.5 minutes
+  // Start periodic discovery with handshake and sync
+  discoveryInterval = setInterval(periodicDiscoveryAndConnect, 30000); // Every 30 seconds
   gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
   logger.info('Full mesh networking started');
+}
+
+export async function startPeriodicDiscoveryAndGossip() {
+  // Start periodic discovery with handshake and sync
+  discoveryInterval = setInterval(periodicDiscoveryAndConnect, 30000); // Every 30 seconds
+  gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
+  logger.info('Periodic discovery and gossip started');
 }
 
 export function stopNetwork() {
@@ -201,6 +245,7 @@ export default {
   startP2PServer,
   discoverAndConnect,
   startMesh,
+  startPeriodicDiscoveryAndGossip,
   stopNetwork,
   getActivePeers,
   getPeerId,

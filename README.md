@@ -161,12 +161,21 @@ Veritas-Chain uses **APoC**, a unique consensus mechanism where:
 node index.mjs
 ```
 
+For debug logging:
+```bash
+LOG_LEVEL=DEBUG node index.mjs
+```
+
+Available log levels: `ERROR`, `WARN`, `INFO` (default), `DEBUG`
+
 The node will:
-1. Load or create genesis block
-2. Discover peers (local subnet + DNS)
-3. Sync with existing peers
-4. Start HTTP API server (default: port 8081)
-5. Begin P2P gossip
+1. Load stored chain (if exists)
+2. **Start P2P server (port 6000 by default)**
+3. Discover peers (local subnet + DNS)
+4. Sync with existing peers (if found)
+5. Create genesis block (only if no stored chain and no peers)
+6. Start HTTP API server (default: port 8081)
+7. Begin periodic peer discovery and P2P gossip
 
 ### Example: Register an Identity
 

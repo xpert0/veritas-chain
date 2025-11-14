@@ -5,7 +5,9 @@ const LOG_LEVELS = {
   DEBUG: 3
 };
 
-let currentLevel = LOG_LEVELS.INFO;
+// Initialize log level from environment variable or default to INFO
+const envLogLevel = process.env.LOG_LEVEL?.toUpperCase();
+let currentLevel = LOG_LEVELS[envLogLevel] !== undefined ? LOG_LEVELS[envLogLevel] : LOG_LEVELS.INFO;
 
 /**
  * Set logging level
