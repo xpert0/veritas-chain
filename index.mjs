@@ -25,12 +25,6 @@ async function bootstrap() {
     await config.loadConfig();
     logger.info('[2/9] Initializing storage...');
     await storage.initStorage();
-    logger.info('[3/9] Initializing network...');
-    await network.initNetwork();
-    logger.info('[4/9] Discovering peers...');
-    await network.discoverAndConnect();
-    await storage.saveSnapshot();
-    logger.info('[5/9] Loading chain data...');
     const data = await storage.loadAll();
     if (data.genesis && data.masterKey) {
       logger.info('Existing chain found, loading...');
@@ -45,7 +39,14 @@ async function bootstrap() {
         );
         logger.info('Chain snapshot loaded', { blocks: data.snapshot.chain.length });
       }
-    } else {
+    }
+    logger.info('[3/9] Initializing network...');
+    await network.initNetwork();
+    logger.info('[4/9] Discovering peers...');
+    await network.discoverAndConnect();
+    await storage.saveSnapshot();
+    logger.info('[5/9] Loading chain data...');
+    if (!(data.genesis && data.masterKey)) {
       logger.info('No existing chain, creating new genesis...');
       logger.info('Loading master key from master_key.json...');
       const masterKey = await genesis.loadMasterKeyFromFile();

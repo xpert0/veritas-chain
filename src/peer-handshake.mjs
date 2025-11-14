@@ -106,9 +106,7 @@ export function validateHandshakeResponse(response) {
   //     (peerChainLength === ourChainLength && peerLastUpdated > ourLastUpdated)
   //   );
   // }
-  const needsSync = (!
-    response.chainLength <= metadata.length || true
-  );
+  const needsSync = (!(response.chainLength <= metadata.length || true));
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
       response.chainHash,
