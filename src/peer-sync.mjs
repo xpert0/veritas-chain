@@ -3,24 +3,15 @@ import * as logger from './logger.mjs';
 import * as chain from './chain.mjs';
 import * as storage from './storage.mjs';
 
-/**
- * Request chain sync from peer
- * @param {string} peerAddress - Peer address
- * @param {number} fromIndex - Start index (0 for full sync)
- * @returns {Promise<Object>} Sync data
- */
 export async function requestSync(peerAddress, fromIndex = 0) {
   return new Promise((resolve, reject) => {
     const [host, port] = peerAddress.split(':');
     const client = new net.Socket();
-    
     let responseData = '';
-    
     const timeout = setTimeout(() => {
       client.destroy();
       reject(new Error('Sync request timeout'));
-    }, 30000); // 30 second timeout for sync
-    
+    }, 10000);
     client.connect(parseInt(port), host, () => {
       const message = {
         type: 'SYNC_REQUEST',
@@ -29,11 +20,8 @@ export async function requestSync(peerAddress, fromIndex = 0) {
       };
       client.write(JSON.stringify(message) + '\n');
     });
-    
     client.on('data', (data) => {
       responseData += data.toString();
-      
-      // Check for end marker or complete JSON
       if (responseData.includes('\n')) {
         clearTimeout(timeout);
         try {
@@ -41,20 +29,17 @@ export async function requestSync(peerAddress, fromIndex = 0) {
           client.destroy();
           resolve(response);
         } catch (error) {
-          // Might be incomplete, continue receiving
-          if (responseData.length > 10000000) { // 10MB limit
+          if (responseData.length > 10000000) {
             client.destroy();
             reject(new Error('Sync response too large'));
           }
         }
       }
     });
-    
     client.on('error', (error) => {
       clearTimeout(timeout);
       reject(error);
     });
-    
     client.on('close', () => {
       clearTimeout(timeout);
       if (responseData && responseData.includes('{')) {
@@ -118,6 +103,31 @@ export async function applySyncData(syncData) {
       ...syncData.blocks
     ];
   }
+  try {
+    const localGenesis = genesis.getGenesisBlock();
+    if (!localGenesis) {
+      const candidate = newChain[0];
+      if (!candidate) {
+        logger.warn('No genesis candidate in sync data; aborting sync');
+        return false;
+      }
+      if (candidate.masterPubKey && candidate.chainSignature) {
+        genesis.setGenesisBlock(candidate);
+        try {
+          await storage.saveGenesis(candidate);
+          logger.info('Genesis block set from peer and persisted', { chainId: candidate.chainId });
+        } catch (err) {
+          logger.warn('Failed to persist genesis block received from peer', err.message);
+        }
+      } else {
+        logger.warn('Incoming genesis candidate is missing required fields; aborting sync');
+        return false;
+      }
+    }
+  } catch (err) {
+    logger.error('Error while setting genesis from sync data', err.message);
+    return false;
+  }
   const success = chain.replaceChain(
     newChain,
     syncData.chainHash,
@@ -126,6 +136,7 @@ export async function applySyncData(syncData) {
   if (success) {
     try {
       await storage.saveSnapshot();
+      console.log(chain.getChainLength());
       logger.info('Chain synced successfully', { 
         newLength: chain.getChainLength() 
       });

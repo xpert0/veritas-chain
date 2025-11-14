@@ -11,7 +11,7 @@ export function createHandshakeMessage(peerId) {
     type: 'HANDSHAKE',
     peerId,
     chainId: genesisBlock?.chainId || null,
-    chainLength: metadata.length,
+    chainLength: metadata.length+1,
     chainHash: metadata.chainHash,
     chainSignature: metadata.chainSignature,
     masterPubKey: metadata.masterPubKey,
@@ -90,9 +90,7 @@ export function validateHandshakeResponse(response) {
   //   (response.chainLength === metadata.length && 
   //    response.lastUpdated > metadata.lastUpdated)
   // );
-  const needsSync = (!
-    response.chainLength <= metadata.length || true
-  );
+  const needsSync = (response.chainLength > metadata.length || true);
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
       response.chainHash,
