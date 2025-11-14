@@ -46,12 +46,16 @@ async function bootstrap() {
     logger.info('[3/9] Initializing network...');
     await network.initNetwork();
     
-    // Step 2: Discover peers and check their chains
-    logger.info('[4/9] Discovering peers...');
+    // Step 2: Start P2P server so we can receive peer connections
+    logger.info('[4/9] Starting P2P server...');
+    await network.startP2PServer();
+    
+    // Step 3: Discover peers and check their chains
+    logger.info('[5/9] Discovering peers...');
     await network.discoverAndConnect();
     
-    // Step 3: After peer discovery and sync, check if we have a genesis block
-    logger.info('[5/9] Loading chain data...');
+    // Step 4: After peer discovery and sync, check if we have a genesis block
+    logger.info('[6/9] Loading chain data...');
     const inMemoryGenesis = genesis.getGenesisBlock();
     
     // If we didn't have a stored genesis but got one from peers, save it
@@ -74,7 +78,7 @@ async function bootstrap() {
     await storage.saveSnapshot();
     logger.info('Chain state persisted', { blocks: chain.getChainLength() });
     
-    // Step 4: Only create new genesis if we still don't have one (no stored chain AND no peers)
+    // Step 5: Only create new genesis if we still don't have one (no stored chain AND no peers)
     if (!genesis.getGenesisBlock()) {
       logger.info('No existing chain and no peers found, creating new genesis...');
       logger.info('Loading master key from master_key.json...');
@@ -87,17 +91,16 @@ async function bootstrap() {
       logger.info('New chain created', { chainId: genesisBlock.chainId });
     }
     
-    logger.info('[6/9] Verifying chain integrity...');
+    logger.info('[7/9] Verifying chain integrity...');
     const isValid = chain.verifyChainIntegrity();
     if (!isValid) {
       throw new Error('Chain integrity check failed');
     }
     logger.info('Chain integrity verified');
-    logger.info('[7/9] Starting P2P mesh...');
-    await network.startMesh();
-    logger.info('[8/9] Starting automatic snapshots...');
+    logger.info('[8/9] Starting periodic discovery and gossip...');
+    await network.startPeriodicDiscoveryAndGossip();
     storage.startAutoSnapshot();
-    logger.info('[9/9] Starting HTTP API server...');
+    logger.info('[10/10] Starting HTTP API server...');
     await startHTTPServer();
     logger.info('===== ZKIC Bootstrap Complete =====');
     logger.info('Node is ready', network.getNetworkStatus());

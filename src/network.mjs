@@ -185,6 +185,13 @@ export async function startMesh() {
   logger.info('Full mesh networking started');
 }
 
+export async function startPeriodicDiscoveryAndGossip() {
+  // Start periodic discovery with handshake and sync
+  discoveryInterval = setInterval(periodicDiscoveryAndConnect, 30000); // Every 30 seconds
+  gossipInterval = gossip.startGossip(activePeers, 30); // Every 30 seconds
+  logger.info('Periodic discovery and gossip started');
+}
+
 export function stopNetwork() {
   gossip.stopGossip();
   if (discoveryInterval) {
@@ -238,6 +245,7 @@ export default {
   startP2PServer,
   discoverAndConnect,
   startMesh,
+  startPeriodicDiscoveryAndGossip,
   stopNetwork,
   getActivePeers,
   getPeerId,
