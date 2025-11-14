@@ -77,12 +77,6 @@ export async function discoverLocalPeers() {
       localIP 
     });
     const maxHosts = Math.min(hostCount, 65536);
-    // if (maxHosts > 1024) {
-    //   logger.warn('Large subnet detected, limiting scan', { 
-    //     hostCount: maxHosts,
-    //     note: 'Consider using a smaller subnet for faster discovery'
-    //   });
-    // }
     const promises = [];
     for (let i = 1; i < maxHosts - 1; i++) {
       const ip = numToIP(networkNum + i);
