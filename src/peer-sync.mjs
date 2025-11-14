@@ -136,6 +136,7 @@ export async function applySyncData(syncData) {
   if (success) {
     try {
       await storage.saveSnapshot();
+      console.log(chain.getChainLength());
       logger.info('Chain synced successfully', { 
         newLength: chain.getChainLength() 
       });
