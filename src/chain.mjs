@@ -129,7 +129,7 @@ function updateChainHash() {
   chainHash = calculateChainHash();
   
   const masterKeyPair = genesis.getMasterKeyPair();
-  if (masterKeyPair && chainHash) {
+  if (masterKeyPair && masterKeyPair.privateKey && chainHash) {
     chainSignature = crypto.signEd25519(chainHash, masterKeyPair.privateKey);
   }
 }
