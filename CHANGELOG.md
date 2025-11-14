@@ -3,12 +3,14 @@
 ## [Unreleased] - 2025-11-14
 
 ### Fixed
+- **Peer Discovery**: Fixed bootstrap order - P2P server now starts before peer discovery to ensure handshake responses can be received
 - **Peer Syncing**: Fixed missing genesis import in `peer-sync.mjs` that caused runtime errors when peers tried to sync
 - **Peer Discovery**: Peers discovered after bootstrap now properly handshake and sync (not just during initial bootstrap)
 - **Bootstrap Order**: Restructured bootstrap sequence to check peers before creating new genesis block
-  - Order: Load stored chain → Discover peers → Sync → Create genesis only if no chain and no peers
+  - Order: Load stored chain → **Start P2P server** → Discover peers → Sync → Create genesis only if no chain and no peers
 - **Handshake Sync**: Fixed peer sync to properly receive and save genesis block from other peers
 - **Logger**: Added LOG_LEVEL environment variable support (ERROR, WARN, INFO, DEBUG)
+- **Duplicate Discovery**: Eliminated duplicate peer discovery calls during bootstrap
 
 ### Added
 - `periodicDiscoveryAndConnect()` function for continuous peer discovery and connection
@@ -38,13 +40,14 @@ When a new peer joins the network:
 2. Initialize storage
 3. Load stored chain (if exists)
 4. Initialize network
-5. Discover peers
-6. Sync with peers (if found)
-7. Create new genesis (only if no stored chain AND no peers)
-8. Verify chain integrity
-9. Start P2P mesh
-10. Start auto snapshots
-11. Start HTTP API
+5. **Start P2P server (crucial: must start before peer discovery)**
+6. Discover peers and handshake
+7. Sync with peers (if found)
+8. Create new genesis (only if no stored chain AND no peers)
+9. Verify chain integrity
+10. Start periodic discovery and gossip
+11. Start auto snapshots
+12. Start HTTP API
 ```
 
 #### Periodic Discovery
