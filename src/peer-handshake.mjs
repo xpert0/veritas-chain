@@ -95,20 +95,20 @@ export function validateHandshakeResponse(response) {
   const peerLastUpdated = (response.lastUpdated == null) ? 0 : Number(response.lastUpdated);
   const ourLastUpdated = (metadata && metadata.lastUpdated != null) ? Number(metadata.lastUpdated) : 0;
 
-  let needsSync = false;
-  if (peerChainLength == null) {
-    needsSync = false;
-  } else if (ourChainLength == null) {
-    needsSync = true;
-  } else {
-    needsSync = (
-      peerChainLength > ourChainLength ||
-      (peerChainLength === ourChainLength && peerLastUpdated > ourLastUpdated)
-    );
-  }
-  // const needsSync = (!
-  //   response.chainLength <= metadata.length || true
-  // );
+  // let needsSync = false;
+  // if (peerChainLength == null) {
+  //   needsSync = false;
+  // } else if (ourChainLength == null) {
+  //   needsSync = true;
+  // } else {
+  //   needsSync = (
+  //     peerChainLength > ourChainLength ||
+  //     (peerChainLength === ourChainLength && peerLastUpdated > ourLastUpdated)
+  //   );
+  // }
+  const needsSync = (!
+    response.chainLength <= metadata.length || true
+  );
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
       response.chainHash,
