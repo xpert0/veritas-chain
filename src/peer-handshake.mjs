@@ -11,6 +11,7 @@ export function createHandshakeMessage(peerId) {
     type: 'HANDSHAKE',
     peerId,
     chainId: genesisBlock?.chainId || null,
+    genesisBlock,
     chainLength: metadata.length+1,
     chainHash: metadata.chainHash,
     chainSignature: metadata.chainSignature,

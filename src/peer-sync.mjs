@@ -105,8 +105,10 @@ export async function applySyncData(syncData) {
   }
   try {
     const localGenesis = genesis.getGenesisBlock();
+    console.log(localGenesis);
     if (!localGenesis) {
-      const candidate = newChain[0];
+      // const candidate = newChain[0];
+      const candidate = syncData.genesisBlock;
       console.log(candidate);
       if (!candidate) {
         logger.warn('No genesis candidate in sync data; aborting sync');
