@@ -103,6 +103,31 @@ export async function applySyncData(syncData) {
       ...syncData.blocks
     ];
   }
+  try {
+    const localGenesis = genesis.getGenesisBlock();
+    if (!localGenesis) {
+      const candidate = newChain[0];
+      if (!candidate) {
+        logger.warn('No genesis candidate in sync data; aborting sync');
+        return false;
+      }
+      if (candidate.masterPubKey && candidate.chainSignature) {
+        genesis.setGenesisBlock(candidate);
+        try {
+          await storage.saveGenesis(candidate);
+          logger.info('Genesis block set from peer and persisted', { chainId: candidate.chainId });
+        } catch (err) {
+          logger.warn('Failed to persist genesis block received from peer', err.message);
+        }
+      } else {
+        logger.warn('Incoming genesis candidate is missing required fields; aborting sync');
+        return false;
+      }
+    }
+  } catch (err) {
+    logger.error('Error while setting genesis from sync data', err.message);
+    return false;
+  }
   const success = chain.replaceChain(
     newChain,
     syncData.chainHash,
