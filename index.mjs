@@ -29,6 +29,7 @@ async function bootstrap() {
     await network.initNetwork();
     logger.info('[4/9] Discovering peers...');
     await network.discoverAndConnect();
+    await storage.saveSnapshot();
     logger.info('[5/9] Loading chain data...');
     const data = await storage.loadAll();
     if (data.genesis && data.masterKey) {
