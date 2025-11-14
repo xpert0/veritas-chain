@@ -25,7 +25,7 @@ async function bootstrap() {
     await config.loadConfig();
     logger.info('[2/9] Initializing storage...');
     await storage.initStorage();
-    const data = await storage.loadAll();
+    let data = await storage.loadAll();
     if (data.genesis && data.masterKey) {
       logger.info('Existing chain found, loading...');
       genesis.setMasterKeyPair(data.masterKey);
@@ -44,12 +44,12 @@ async function bootstrap() {
     await network.initNetwork();
     logger.info('[4/9] Discovering peers...');
     await network.discoverAndConnect();
-    logger.warn('chain:',data);
     logger.info('[5/9] Loading chain data...');
     const inMemoryGenesis = genesis.getGenesisBlock();
-    console.log(inMemoryGenesis);
     const inMemoryChainLength = chain.getChainLength();
     await storage.saveSnapshot();
+    data = await storage.loadAll();
+    logger.warn('data:',data);
     if (!data.genesis && inMemoryGenesis) {
       try {
         await storage.saveGenesis(inMemoryGenesis);
