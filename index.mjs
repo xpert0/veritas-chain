@@ -46,7 +46,7 @@ async function bootstrap() {
     await network.discoverAndConnect();
     await storage.saveSnapshot();
     logger.info('[5/9] Loading chain data...');
-    if (!(data.genesis && data.masterKey)) {
+    if (!data.genesis && !data.masterKey)) {
       logger.info('No existing chain, creating new genesis...');
       logger.info('Loading master key from master_key.json...');
       const masterKey = await genesis.loadMasterKeyFromFile();

@@ -90,7 +90,7 @@ export function validateHandshakeResponse(response) {
   //   (response.chainLength === metadata.length && 
   //    response.lastUpdated > metadata.lastUpdated)
   // );
-  const needsSync = (!(response.chainLength <= metadata.length || true));
+  const needsSync = (response.chainLength > metadata.length || true);
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
       response.chainHash,
