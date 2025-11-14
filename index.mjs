@@ -44,9 +44,21 @@ async function bootstrap() {
     await network.initNetwork();
     logger.info('[4/9] Discovering peers...');
     await network.discoverAndConnect();
-    await storage.saveSnapshot();
+    logger.warn('chain:',data);
     logger.info('[5/9] Loading chain data...');
-    if (!data.genesis && !data.masterKey)) {
+    const inMemoryGenesis = genesis.getGenesisBlock();
+    const inMemoryChainLength = chain.getChainLength();
+    await storage.saveSnapshot();
+    if (!data.genesis && inMemoryGenesis) {
+      try {
+        await storage.saveGenesis(inMemoryGenesis);
+        logger.info('In-memory genesis persisted after peer sync', { chainId: inMemoryGenesis.chainId });
+      } catch (err) {
+        logger.warn('Failed to persist in-memory genesis after sync', err.message);
+      }
+    }
+    logger.info('In-memory chain persisted', { blocks: chain.getChainLength() });
+    if (!genesis.getGenesisBlock()) {
       logger.info('No existing chain, creating new genesis...');
       logger.info('Loading master key from master_key.json...');
       const masterKey = await genesis.loadMasterKeyFromFile();
