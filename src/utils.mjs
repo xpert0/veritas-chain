@@ -1,17 +1,7 @@
-/**
- * Deep clone an object
- * @param {any} obj - Object to clone
- * @returns {any} Cloned object
- */
 export function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
-/**
- * Calculate age from date of birth
- * @param {string} dob - Date of birth in ISO format
- * @returns {number} Age in years
- */
 export function calculateAge(dob) {
   const birthDate = new Date(dob);
   const today = new Date();
@@ -23,18 +13,10 @@ export function calculateAge(dob) {
   return age;
 }
 
-/**
- * Evaluate a condition against a value
- * @param {any} value - Value to check
- * @param {string} condition - Condition string (e.g., ">= 18", "< 2007-10-20")
- * @returns {boolean} Result of evaluation
- */
 export function evaluateCondition(value, condition) {
-  // Parse condition
   const operators = ['<=', '>=', '!=', '==', '<', '>'];
   let operator = null;
   let compareValue = null;
-  
   for (const op of operators) {
     if (condition.includes(op)) {
       operator = op;
@@ -42,15 +24,11 @@ export function evaluateCondition(value, condition) {
       break;
     }
   }
-  
   if (!operator) {
     return false;
   }
-  
-  // Try to parse as number or date, otherwise compare as strings
   let val = value;
   let cmp = compareValue;
-  
   if (!isNaN(value) && !isNaN(compareValue)) {
     val = Number(value);
     cmp = Number(compareValue);
@@ -58,8 +36,6 @@ export function evaluateCondition(value, condition) {
     val = new Date(value).getTime();
     cmp = new Date(compareValue).getTime();
   }
-  // For strings, keep them as is and use string comparison
-  
   switch (operator) {
     case '>': return val > cmp;
     case '<': return val < cmp;
@@ -71,38 +47,19 @@ export function evaluateCondition(value, condition) {
   }
 }
 
-/**
- * Check if string is a valid date
- * @param {string} str - String to check
- * @returns {boolean} True if valid date
- */
 export function isValidDate(str) {
   const date = new Date(str);
   return date instanceof Date && !isNaN(date);
 }
 
-/**
- * Sleep for specified milliseconds
- * @param {number} ms - Milliseconds to sleep
- * @returns {Promise<void>}
- */
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Get current timestamp in seconds
- * @returns {number} Current timestamp
- */
 export function getCurrentTimestamp() {
   return Math.floor(Date.now() / 1000);
 }
 
-/**
- * Validate block structure
- * @param {Object} block - Block to validate
- * @returns {boolean} True if valid
- */
 export function isValidBlockStructure(block) {
   return (
     block &&
@@ -115,11 +72,6 @@ export function isValidBlockStructure(block) {
   );
 }
 
-/**
- * Check if IP is in local network
- * @param {string} ip - IP address
- * @returns {boolean} True if local
- */
 export function isLocalIP(ip) {
   return ip.startsWith('192.168.') || 
          ip.startsWith('10.') || 
@@ -128,11 +80,6 @@ export function isLocalIP(ip) {
          ip === 'localhost';
 }
 
-/**
- * Parse IP with port
- * @param {string} address - Address string
- * @returns {{ip: string, port: number}|null}
- */
 export function parseAddress(address) {
   const parts = address.split(':');
   if (parts.length === 2) {

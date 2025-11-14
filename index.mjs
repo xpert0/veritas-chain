@@ -47,7 +47,6 @@ async function bootstrap() {
     logger.warn('chain:',data);
     logger.info('[5/9] Loading chain data...');
     const inMemoryGenesis = genesis.getGenesisBlock();
-    console.log(inMemoryGenesis);
     const inMemoryChainLength = chain.getChainLength();
     await storage.saveSnapshot();
     if (!data.genesis && inMemoryGenesis) {

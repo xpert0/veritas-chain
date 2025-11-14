@@ -84,12 +84,8 @@ export function validateHandshakeResponse(response) {
   if (response.chainId && genesisBlock && response.chainId !== genesisBlock.chainId) {
     return { valid: false, reason: 'Different chain ID' };
   }
+  logger.warn('response:',response);
   const metadata = chain.getChainMetadata();
-  // const needsSync = (
-  //   response.chainLength > metadata.length ||
-  //   (response.chainLength === metadata.length && 
-  //    response.lastUpdated > metadata.lastUpdated)
-  // );
   const needsSync = (response.chainLength > metadata.length || true);
   if (response.chainHash && response.chainSignature && response.masterPubKey) {
     const isAuthentic = chain.verifyChainAuthenticity(
